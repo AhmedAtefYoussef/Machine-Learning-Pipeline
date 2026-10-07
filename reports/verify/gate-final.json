@@ -1,0 +1,201 @@
+{
+ "gate": "final",
+ "deterministic": {
+  "verify-fast": [
+   "ruff 35 errors non-blocking",
+   "231 passed",
+   "leak_scan 29 files 0 findings",
+   "chain_check 5/5, 0 failures",
+   "p6 chain upstream ok",
+   "req_check 15 reqs 0 failures"
+  ],
+  "submission_check": "0 failures 0 warnings",
+  "number_trace": "0 untraced",
+  "report_pages": 5,
+  "notebook": "106 cells, 0 error outputs, 23 figures, 0 TODO, 0 placeholders",
+  "reproducibility": "p1,p2,p3,p5,predict rerun: artifacts and sample_submission.csv byte-identical (git status clean)"
+ },
+ "results": [
+  {
+   "id": "R1",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json",
+   "note": "Five phases in order; p1-p5 artifacts and nb sections exist; notebook has p1-p5 plus p6 section."
+  },
+  {
+   "id": "R2",
+   "verdict": "pass",
+   "evidence_path": "rush_hour.ipynb cells 25,84,105",
+   "note": "Chain asserts executed: P2 init loss equals P1 final (diff 0.0); P5 features within P4 survivors; hash chain p1-p6 table."
+  },
+  {
+   "id": "R3",
+   "verdict": "pass",
+   "evidence_path": "nb/p1_gd.py..p5_logistic.py",
+   "note": "Every phase has Expectation and Outcome with surprises; Expectation commits precede artifacts and are text-unchanged; 0 TODO; ADR-013..016 disclosed."
+  },
+  {
+   "id": "R4",
+   "verdict": "pass",
+   "evidence_path": "src/common.py:117",
+   "note": "Seed 44615 recomputed (41698 for brief example); one train_test_split; one chrono cut 2012-07-01; folds unseeded inside train."
+  },
+  {
+   "id": "R5",
+   "verdict": "pass",
+   "evidence_path": "src/phases/p5.py:53",
+   "note": "Designs, scalers, thresholds fitted on train only; leak_scan 0 findings; load_test only in predict.py and p6 section; predict transforms train-fitted."
+  },
+  {
+   "id": "R6",
+   "verdict": "pass",
+   "evidence_path": "src/common.py",
+   "note": "Only data/*.csv read; weather-memory reads dteday, hr, weathersit only; no network or external data."
+  },
+  {
+   "id": "R7",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json",
+   "note": "Own GD; converged 474 its, lr 0.506=half bound; sweep stall, converge, diverge; oracle 5e-6; grad check 4.6e-7; justified in notebook and report."
+  },
+  {
+   "id": "R8",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p2.json",
+   "note": "Init loss equals P1 final; degree 3, temp powers plus workingday x hour; val R2 0.9105 over 0.7212; zero-init of new slots justified."
+  },
+  {
+   "id": "R9",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p3.json",
+   "note": "Ladder, degree axis, learning curves, bootstrap; under-fit; seeded/day/chrono 0.910/0.909/0.858; drift 0.052 vs leakage 0.0012; trust and target C6 justified."
+  },
+  {
+   "id": "R10",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p4.json",
+   "note": "L1, L2, ENet all implemented, tied within noise; ranges justified; verdict with numbers for all 14 columns; none uninformative. L1 selection near-vacuous (279/280)."
+  },
+  {
+   "id": "R11",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p5.json",
+   "note": "Label year x daytype x hour 75th pct from train; global flaw shown with AUC numbers; survivors only; acc/F1/AUC/PR-AUC, cost threshold 0.25; retrospective."
+  },
+  {
+   "id": "R12",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json bonus",
+   "note": "3x asymmetric GD converged, gradient check 1.8e-9, shift 1.28, under-share 0.52 to 0.30; derivation in report."
+  },
+  {
+   "id": "R13",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1..p5.json",
+   "note": "val_r2 and val_rmse in p1, p2, p3 estimates, p4 methods; p5 acc/F1/AUC; bike scale."
+  },
+  {
+   "id": "R14",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p6.json",
+   "note": "p6.model equals p4.recommended (enet, 0.000768, 0.3); submission_check 0 failures; predict asserts P4 weights reproduced (gap 0.0)."
+  },
+  {
+   "id": "R15",
+   "verdict": "pass",
+   "evidence_path": "rush_hour.ipynb",
+   "note": "106 cells, 0 errors, 23 figures, no TODO or placeholder; report 5 pages; number_trace 0 untraced; WALKTHROUGH exists. run.py verify still pending."
+  },
+  {
+   "id": "H1",
+   "verdict": "pass",
+   "evidence_path": "src/common.py:117",
+   "note": "Seed formula correct; single split call in src/nb; one chronological split."
+  },
+  {
+   "id": "H2",
+   "verdict": "pass",
+   "evidence_path": "src/features.py; src/labels.py",
+   "note": "All fits on train rows; predict refits weights on train+val only, Design and scaler fitted on train; test only transformed."
+  },
+  {
+   "id": "H3",
+   "verdict": "pass",
+   "evidence_path": "src",
+   "note": "No external data or network access."
+  },
+  {
+   "id": "H4",
+   "verdict": "pass",
+   "evidence_path": "src/gd.py",
+   "note": "No sklearn in gd.py, gd_asym.py, poly.py, phases/p1.py, p2.py."
+  },
+  {
+   "id": "H5",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p6.json",
+   "note": "Hash chain p1..p6 verified by chain_check 5/5 and notebook table."
+  },
+  {
+   "id": "H6",
+   "verdict": "pass",
+   "evidence_path": "src/regularization.py",
+   "note": "sklearn imported only for the one train_test_split; own ridge, coordinate-descent lasso and enet; own logistic."
+  },
+  {
+   "id": "H7",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p5.json",
+   "note": "P5 features (279) subset of P4 survivors, asserted in notebook; thresholds fitted on train (fitted_on train)."
+  },
+  {
+   "id": "H8",
+   "verdict": "pass",
+   "evidence_path": "src/predict.py:105",
+   "note": "p6.model equals p4.recommended; model A reproduces P4 weights, gap 0.0."
+  },
+  {
+   "id": "H9",
+   "verdict": "pass",
+   "evidence_path": "nb/p1_gd.py..p5_logistic.py",
+   "note": "Expectation commits (2ef385f,133ca8a,b5114d4) precede first artifact commits; text unchanged apart from trailing whitespace; ADR-013..016 disclosed."
+  },
+  {
+   "id": "H10",
+   "verdict": "pass",
+   "evidence_path": "report/report.pdf",
+   "note": "Notebook executed clean; report 5 pages; number_trace 0 untraced; 10 numbers spot-checked against artifacts all match."
+  },
+  {
+   "id": "H11",
+   "verdict": "pass",
+   "evidence_path": "src/predict.py",
+   "note": "load_test only in predict.py and p6 section; test inputs used only as weather-lag lookup, no label, no tuning."
+  },
+  {
+   "id": "H12",
+   "verdict": "warn",
+   "evidence_path": "rush_hour.ipynb cell 1",
+   "note": "Config cell at top, readable; but ruff reports 35 non-blocking lint errors (tools, nb, report scripts)."
+  },
+  {
+   "id": "H13",
+   "verdict": "pass",
+   "evidence_path": "src",
+   "note": "Nothing from exp/ imported by src or nb; tree model only mentioned in report as outside diagnostic."
+  }
+ ],
+ "overclaims": [
+  "Report omits that 5 Lasso grid points on the full design hit the sweep cap (none chosen); only visible in notebook output, STATE calls it disclosed.",
+  "Report section 1 calls workingday a copy of weekday and holiday, yet verdict table labels workingday and weekday both useful; consistent with rule, not with the plain-language statement.",
+  "dteday verdict 'useful*' rests on group drop (0.120) while its alone-drop interval includes zero; disclosed in table and prose, so warn only.",
+  "Bonus baseline in report (RMSE 97.9, cost 22183) is the no-correction MSE model, not the ls-factor Phase 1 model (RMSE 97.3); unstated."
+ ],
+ "open_items": [
+  "A2: team must confirm IDs 16007032, 16009837, 16006283 are the registered roster.",
+  "Chief to run python run.py verify (strict trace) after this gate; not run by verifier.",
+  "Lasso selection step removes 1 of 280 features; survivor set is effectively the verdict step; report states it, consider plain sentence.",
+  "35 non-blocking ruff errors remain; stale .claude/worktrees and build/ are git-ignored.",
+  "Report P3 says Phase 3 chrono reading: held-out days match hidden test (20th of month); claim is inference, not testable."
+ ]
+}

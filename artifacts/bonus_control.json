@@ -1,0 +1,23 @@
+{
+ "config_sha256": "c67c36a9a8ae54b177d07365bd85019d1fe05ec245566e7825c644d15cd17392",
+ "iterations": 3365,
+ "k_control": 1.0,
+ "k_cost": 3.0,
+ "seed": 44615,
+ "shift_from_asymmetry": 1.1784413697905458,
+ "shift_from_fitting_on_bikes": 1.0886870548045062,
+ "stop_reason": "converged",
+ "total_shift": 1.2829538641370575,
+ "upstream_sha256": "13404c6c1093cfd198891a32b5fc512f3487970c6dc971c3886fa73a50c137ae",
+ "val": {
+  "k1_model": {
+   "abs_cost": 120.53362577699943,
+   "mean_error": 0.4885985814286783,
+   "mean_pred": 191.92936993129092,
+   "r2": 0.7588574019535792,
+   "rmse": 90.50784347755204,
+   "sq_cost": 17657.430131422017,
+   "under_share": 0.41092745638200184
+  }
+ }
+}
