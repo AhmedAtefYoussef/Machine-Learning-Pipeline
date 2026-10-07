@@ -17,7 +17,11 @@
 # %% [markdown]
 # ### Justification: search ranges and strategy
 #
-# TODO(chief)
+# - **How Phase 3 shapes the search.** The diagnosis was "under-fit, no measurable variance" for the model we carry forward. So we do not expect a large penalty to help, and the grid has to reach down to practically zero to show that; we also add the unpenalised fit as a reference line. At the other end the grid must go far enough to show the model being destroyed, so that the optimum is visibly inside the range and not at an edge.
+# - **Design.** The Phase 3 target design plus the columns we had held back (`atemp`, `yr`, `instant`, `season`, `mnth`; `weekday` is already in the target), so that every original column is in front of the three methods. All columns are standardised on the training rows; the intercept is never penalised.
+# - **Objective.** (1/2n)‖y − b − Xw‖² + α·ρ‖w‖₁ + (α/2)(1 − ρ)‖w‖², with ρ = 0 for Ridge, ρ = 1 for Lasso and ρ in {0.1, 0.3, 0.5, 0.7, 0.9, 0.95} for Elastic Net. Ridge is solved in closed form; Lasso and Elastic Net by our own cyclic coordinate descent with soft-thresholding, warm-started along the path. Our tests check all three against a reference library to better than 1e-3.
+# - **Grids.** 40 log-spaced values per path. Ridge: {{p4.grids.l2.min:.0e}} to {{p4.grids.l2.max:.0f}}. Lasso and Elastic Net: from the smallest penalty that sets every weight to zero (computed from the data: {{p4.grids.l1.max:.3f}} for Lasso) down to one ten-thousandth of it. Log spacing because the effect of a penalty is multiplicative.
+# - **Honesty note.** {{p4.not_converged.count}} Lasso fits, all at one large grid value far from the chosen one, used the full {{p4.solver.max_sweeps}} sweeps without meeting our tolerance; the exactly duplicated columns in this design make coordinate descent crawl there. None of them is a chosen model.
 
 # %%
 # Phase 4 loads artifacts/p3.json for the target design, adds the candidate columns and runs everything with our own
@@ -64,7 +68,7 @@ print(enet.round(5).to_string(index=False))
 # %% [markdown]
 # ### Justification: fair comparison of the three methods
 #
-# TODO(chief)
+# The three methods get the same design matrix, the same training rows, the same validation rows, the same day folds, the same number of grid points and the same selection rule. Elastic Net has a second knob and therefore six times as many candidates, which gives it a small advantage on the validation set; that is one reason we do not compare on validation alone. For each method at its chosen setting we report validation R² with a bootstrap interval, the held-out-day R² and the chronological R², and for each pair of methods a paired bootstrap interval of the difference on the same validation rows. A difference whose interval contains zero is a tie.
 
 # %%
 # Fair comparison: same design, same rows, same grid density; three validators and the paired intervals.
@@ -80,7 +84,7 @@ print("full design (with candidate columns): best on validation:", best["method"
 # %% [markdown]
 # ### Justification: choice of lambda per method
 #
-# TODO(chief)
+# For each method we take the penalty with the highest validation R² on bikes (ties go to the larger penalty), because the task says tuning uses the validation set and R² on bikes is the metric we are scored on. Two checks sit beside it in the table below: the penalty that is best on held-out days inside the training portion, and the "one standard error" penalty, the largest one whose held-out-day score is within one standard error of that best. If the validation choice were an accident of this particular split, these would disagree strongly with it. Because we select on the validation rows, the validation scores of this phase are slightly optimistic; the held-out-day and chronological columns are not affected by that.
 
 # %%
 # Two ways to pick the penalty: best validation R2 versus day-block CV (best and one-standard-error rule).
@@ -107,7 +111,14 @@ for name in ("temp", "atemp", "yr", "instant", "trend", "workingday", "holiday")
 # %% [markdown]
 # ### Justification: the verdict rule
 #
-# TODO(chief)
+# We fixed the rule before running the phase. The reference model is Ridge at its chosen penalty on the full design; "dropping" a column means removing every feature built from it (for `hr` that includes all its interactions) and refitting.
+#
+# - **Useful:** dropping the column alone lowers validation R² by at least {{p4.verdict_thresholds.min_delta}}, with a paired bootstrap interval that stays above zero.
+# - **Redundant:** dropping it alone costs nothing, but either dropping it together with its partner columns hurts, or the column on its own explains at least {{p4.verdict_thresholds.solo_min}} of the variance. Its information is real but another column already carries it. Partners are the groups we measured to be copies of each other: {`temp`, `atemp`}, {`season`, `mnth`, `dteday`}, {`yr`, `instant`, `dteday`}, {`weekday`, `workingday`, `holiday`}.
+# - **Uninformative:** neither.
+# - **One representative per group.** If a group matters as a whole but no single member is missed when dropped, we keep the member that explains most on its own and call it useful; the others are redundant "carried by" it.
+#
+# Lasso evidence is reported next to the drop tests (how many of the column's own features Lasso keeps, how often over 50 resamples of training days, and where it enters the path), but a Lasso zero alone does not decide a verdict: with copies in the design, which copy Lasso keeps is partly arbitrary.
 
 # %%
 # Verdict for every original column (cost = validation R2 lost when removed; interval = paired bootstrap).
@@ -132,7 +143,7 @@ fig = plot_stability(p4)
 # %% [markdown]
 # ### Justification: the survivor rule
 #
-# TODO(chief)
+# The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible: a feature survives if its Lasso weight is non-zero at the chosen penalty ({{p4.survivor_counts.lasso_nonzero}} features), it is selected in at least {{p4.stability_threshold}} of the day-resampled Lasso fits ({{p4.survivor_counts.stable}} remain), and every original column it is built from has the verdict "useful" ({{p4.survivor_counts.after_verdicts}} remain). The third condition is what removes copies that Lasso happened to keep.
 
 # %%
 # Survivors: lasso non-zero, stable over resampled days, and every source column judged useful.
@@ -143,7 +154,7 @@ print("survivor columns (expanded features):", len(p4["survivors_expanded"]))
 # %% [markdown]
 # ### Justification: final model on the surviving columns
 #
-# TODO(chief)
+# Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing on validation and make the model worse on later months (chronological R² {{p4.methods.l2.chrono_r2:.3f}} with them, {{p4.final.unregularised.chrono_r2:.3f}} without). So we repeat exactly the same search for the three methods on the surviving columns only (stage B) and recommend among those. Rule, fixed in advance: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². We added this second stage after seeing the first Phase 4 run; the first run is in the git history.
 
 # %%
 # Stage B: the same search (ridge, lasso, elastic net) on the surviving columns only.

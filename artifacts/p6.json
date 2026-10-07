@@ -9,7 +9,7 @@
   "0": 144.9864111498258,
   "1": 238.8442508710801
  },
- "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
+ "config_sha256": "c67c36a9a8ae54b177d07365bd85019d1fe05ec245566e7825c644d15cd17392",
  "daily_total_ratio": {
   "max": 1.4854918146366571,
   "min": 0.8308059575367064
@@ -39,5 +39,5 @@
  "refit_on": "train+validation",
  "seed": 44615,
  "train_cnt_mean": 191.60748736793752,
- "upstream_sha256": "430836b6c3669b826adf3d615d2b2a8cba5ad5f2600d305845348010a8319e1d"
+ "upstream_sha256": "f4ba8d01f105bb4915feaa4958f5a32f31a24f3e30276f8f6bc213993d0e46f4"
 }

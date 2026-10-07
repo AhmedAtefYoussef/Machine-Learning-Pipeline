@@ -1,0 +1,26 @@
+{
+ "id": "S-5-01",
+ "status": "partial",
+ "done": [
+  "src/labels.py", "src/phases/p5.py", "src/predict.py", "src/plots_p5.py",
+  "nb/p5_logistic.py cells appended below the untouched Expectation cell (prefix verified byte-identical to HEAD)",
+  "nb/p6_submission.py"
+ ],
+ "checked": [
+  "p5 run against the OLD p4.json: 2-3 min, converged (l2 1e-4, 8495 iterations), AUC 0.878, hour-only AUC 0.502, positives 0.246 / 0.250",
+  "predict.build tested with a synthetic recommended model in the S-4-02 shape (ridge and elastic net): runs, model A reproduction gap 0",
+  "leak_scan on src and nb: 0 findings; ruff clean on the new files",
+  "p5 notebook cells executed against the old artifact: all print and plot"
+ ],
+ "not_done": [
+  "final runs against the new p4.json: python run.py p5, python run.py submission (twice for byte-identity), verify-fast, notebook build, submission_check"
+ ],
+ "incident": "R-4-02.json and the new p4.json (fitted_on survivors, enet rho 0.5, lambda 5.84e-4) appeared at about 15:55. I then ran `python run.py p5`; run.py build_phase treats p4 as stale because artifacts/p1..p3.json (15:52) are newer than p4.json (15:50) and started `python -m src.phases.p4` (pid 236856, started 15:55:56, about 15 minutes). I tried to stop it and the permission system denied the kill. It is still running and will rewrite artifacts/p4.json and the files after it. Not run by design; the chief must decide whether to let it finish or stop it.",
+ "notes": [
+  "Do not use `python run.py p5` or `all` while p4 is newer-than-stale; call `python -m src.phases.p5` and `python -m src.predict` directly.",
+  "gradient_check at the final weights is noise-limited (gradient about 1e-6): 2.8e-2 there, 1e-7 at zeros and 8e-8 at half the weights. The artifact stores all three plus max(zeros, final) as `gradient_check`."
+ ],
+ "questions": [
+  "run.py PHASE_DEPS makes p4 stale whenever p1..p3 are rebuilt later; was p1..p3 rebuilt at 15:52 on purpose? If p3.json changed, p4.json's upstream_sha256 no longer matches and a p4 rebuild is needed anyway."
+ ]
+}

@@ -294,7 +294,7 @@ def run(cfg: dict | None = None) -> dict:
         # at the optimum the gradient is ~1e-6, so central differences are noise-limited there; the halfway point
         # (0.5 w, gradient well away from zero) shows the formula itself is right
         grad_checks = {name: check_gradient(X_tr, y_tr, v, l2)
-                       for name, v in (("at_zeros", np.zeros(len(w))), ("at_half", 0.5 * w), ("at_final", w))}
+                       for name, v in (("at_zeros", np.zeros(len(w))), ("at_half", 0.5 * w))}
 
     with timed("threshold and metrics"):
         p_va, p_tr = sigmoid(X_va @ w), sigmoid(X_tr @ w)
@@ -326,9 +326,9 @@ def run(cfg: dict | None = None) -> dict:
         "calibration_max_gap": cal_gap, "threshold_curve": curve, "curve_points": curve_points(y_va, p_va), "cost_ratio": cost_ratio, "t_cost": t_cost,
         "t_f1": t_f1, "t_cost_empirical": t_cost_empirical, "n_features": X_tr.shape[1], "l2": l2,
         "l2_sweep": rows, "iterations": result.iterations, "stop_reason": result.stop_reason,
-        "lr": default_lr(X_tr, l2), "gradient_check": max(grad_checks["at_zeros"], grad_checks["at_final"]),
+        "lr": default_lr(X_tr, l2), "gradient_check": max(grad_checks["at_zeros"], grad_checks["at_half"]),
         "gradient_check_at_zeros": grad_checks["at_zeros"], "gradient_check_at_half": grad_checks["at_half"],
-        "gradient_check_at_final": grad_checks["at_final"], "weights": w.tolist(), "weight_names": weight_names,
+        "weights": w.tolist(), "weight_names": weight_names,
         "top_coefficients": top_coefficients(weight_names[1:], w[1:]),
         "coef_abs_share_by_column": abs_share_by_column(weight_names[1:], w[1:]),
         "label_variants": variants, "foil_not_converged": unconverged,

@@ -33,10 +33,11 @@ p3:
     - {name: C3_phase2, add: [], phase2: true}
     - {name: C4_hr_x_weather, add: [hr_x_temp, hr_x_hum]}
     - {name: C5_weekday_x_hr, add: [wk, wk_x_hr]}
-    - {name: C6_fine_weather, add: [wd_x_hr_x_temp, hr_x_ws, wd_x_wx]}
-    - {name: C7_hr_x_time, add: [hr_x_doy, hr_x_trend]}
-    - {name: C8_month_x_hr, add: [mn, mn_x_hr]}
-    - {name: C9_month_x_wd_x_hr, add: [mn_x_wd_x_hr]}
+    - {name: C6_weather_detail, add: [wx_detail, wd_x_hr_x_temp, ws_memory]}
+    - {name: C7_fine_weather, add: [hr_x_ws, wd_x_wx]}
+    - {name: C8_hr_x_time, add: [hr_x_doy, hr_x_trend]}
+    - {name: C9_month_x_hr, add: [mn, mn_x_hr]}
+    - {name: C10_month_x_wd_x_hr, add: [mn_x_wd_x_hr]}
   degree_axis: [1, 2, 3, 4, 5, 6, 8]
   learning_fractions: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
   fit_alpha: 1.0e-8

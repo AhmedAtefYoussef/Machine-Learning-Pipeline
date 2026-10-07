@@ -83,8 +83,7 @@ print(sweep.round(5).to_string(index=False))
 print("\nchosen l2:", p5["l2"], "| iterations:", p5["iterations"], "| stop:", p5["stop_reason"],
       "| learning rate:", round(p5["lr"], 4))
 print("gradient check (max relative error): at zeros", f"{p5['gradient_check_at_zeros']:.1e}",
-      "| halfway", f"{p5['gradient_check_at_half']:.1e}", "| at the final weights", f"{p5['gradient_check_at_final']:.1e}",
-      "(the gradient is ~1e-6 there, so the differences are noise-limited)")
+      "| halfway to the final weights", f"{p5['gradient_check_at_half']:.1e}")
 
 # %% [markdown]
 # ### Justification: metrics

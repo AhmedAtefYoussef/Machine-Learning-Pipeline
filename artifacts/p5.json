@@ -90,7 +90,7 @@
   "weekday": 0.2907854034651842,
   "workingday": 0.04540862776094654
  },
- "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
+ "config_sha256": "c67c36a9a8ae54b177d07365bd85019d1fe05ec245566e7825c644d15cd17392",
  "cost_ratio": 3.0,
  "curve_points": [
   {
@@ -2641,7 +2641,7 @@
   "f1": 0.6831701459449473,
   "roc_auc": 0.9079267954090153
  },
- "upstream_sha256": "c3b237bb4db2f28eda28f42486dfea2a92e57aa6c479c6fb43b9c171a27498e0",
+ "upstream_sha256": "23c49f3744d16ee5d3c582da06cce86db5bce74ba9850a456378c0f41ad37aad",
  "val_auc_bootstrap": {
   "hi": 0.8929370081828073,
   "lo": 0.861613010614915

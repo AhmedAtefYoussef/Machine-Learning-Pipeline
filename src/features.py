@@ -16,9 +16,10 @@ SE = tuple(f"se_{k}" for k in range(2, 5))
 MN = tuple(f"mn_{m}" for m in range(2, 13))
 WK = tuple(f"wk_{d}" for d in range(1, 7))
 DOY = ("doy_s1", "doy_c1", "doy_s2", "doy_c2")
+MEMORY = ("wslag1_2", "wslag1_3", "wet3_2", "wet3_3")   # weather one hour earlier / worst of the three hours before
 
 BASE: list[str] = list(HR + ("workingday", "holiday", "ws_2", "ws_3", "temp", "hum", "windspeed", "trend") + DOY)
-CANDIDATES: tuple[str, ...] = ("atemp", "yr", "instant") + SE + MN + WK
+CANDIDATES: tuple[str, ...] = ("atemp", "yr", "instant") + SE + MN + WK + MEMORY
 REGISTRY: tuple[str, ...] = tuple(BASE) + CANDIDATES  # every first-order name, in column order
 
 _EPOCH = pd.Timestamp("2011-01-01")
@@ -55,6 +56,9 @@ def raw_columns(df: pd.DataFrame, hum_fill: float) -> pd.DataFrame:
         cols[f"mn_{m}"] = (df["mnth"].to_numpy() == m).astype(np.float64)
     for d in range(1, 7):
         cols[f"wk_{d}"] = (df["weekday"].to_numpy() == d).astype(np.float64)
+    for k in (2, 3):  # weather memory: columns made by common.add_weather_memory
+        cols[f"wslag1_{k}"] = (df["ws_lag1"].to_numpy() == k).astype(np.float64)
+        cols[f"wet3_{k}"] = (df["wet3"].to_numpy() == k).astype(np.float64)
     return pd.DataFrame(cols, index=df.index)
 
 
@@ -66,7 +70,7 @@ def sources(feature_name: str) -> frozenset[str]:
         return frozenset().union(*(sources(part) for part in feature_name.split("*")))
     name = feature_name.split("^")[0]
     prefix_map = (("hr_", "hr"), ("ws_", "weathersit"), ("doy_", "dteday"), ("se_", "season"),
-                  ("mn_", "mnth"), ("wk_", "weekday"))
+                  ("mn_", "mnth"), ("wk_", "weekday"), ("wslag1_", "weathersit"), ("wet3_", "weathersit"))
     if name == "trend":
         return frozenset({"dteday"})
     for prefix, original in prefix_map:
@@ -100,6 +104,8 @@ def _block_table() -> dict[str, tuple[tuple[str, ...], list[tuple[str, ...]]]]:
         "c_season": (SE, []),
         "c_mnth": (MN, []),
         "c_weekday": (WK, []),
+        "wx_detail": ((), [("hum^2",), ("hum^3",), ("windspeed^2",), ("temp", "windspeed")]),
+        "ws_memory": (MEMORY, []),
     }
 
 
@@ -145,7 +151,7 @@ def _first_order_names(spec: DesignSpec) -> list[str]:
         extra, factors = table[block]
         needed.update(extra)
         for factor in factors:
-            needed.update(factor)
+            needed.update(f.split("^")[0] for f in factor)
     added = [name for name in REGISTRY if name in needed and name not in spec.base]
     return list(spec.base) + added
 
@@ -159,7 +165,14 @@ def _derived_recipes(spec: DesignSpec) -> list[tuple[str, tuple[str, int] | tupl
     table = _block_table()
     for block in spec.blocks:
         for factors in table[block][1]:
-            recipes.append(("*".join(factors), factors))
+            name = "*".join(factors)
+            if name in {n for n, _ in recipes}:   # already made by power_cols (or another block): never twice
+                continue
+            if len(factors) == 1 and "^" in factors[0]:   # a power inside a block, e.g. hum^2
+                column, power = factors[0].split("^")
+                recipes.append((name, (column, int(power))))
+            else:
+                recipes.append((name, factors))
     return recipes
 
 

@@ -57,14 +57,59 @@ def set_threads(n: int = 1) -> None:
         pass
 
 
+MEMORY_INPUT_COLUMNS = ["dteday", "hr", "weathersit"]   # the only columns the weather memory reads (no label)
+
+
+def _timestamps(df: pd.DataFrame) -> pd.Series:
+    """Hour of each row: dteday + hr hours."""
+    return pd.to_datetime(df["dteday"]) + pd.to_timedelta(df["hr"], unit="h")
+
+
+def _situation(df: pd.DataFrame) -> np.ndarray:
+    """Weather situation with category 4 merged into 3 (as in the features)."""
+    return np.minimum(df["weathersit"].to_numpy(), 3)
+
+
+def add_weather_memory(df: pd.DataFrame, lookup: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Copy of `df` with two integer columns built from the weather of the hours before each row (inputs only).
+
+    ws_lag1 = weather situation one hour earlier; wet3 = the largest situation 1, 2 and 3 hours earlier.
+    Hours are found by timestamp (dteday + hr hours) in `lookup`, the frame whose rows form the timeline (default: df
+    itself). An earlier hour that is missing from the timeline counts as the row's own situation. Only dteday, hr and
+    weathersit are read; the label is never touched.
+    """
+    timeline = df if lookup is None else lookup
+    known = pd.Series(_situation(timeline), index=_timestamps(timeline))
+    known = known[~known.index.duplicated()]
+    own = _situation(df)
+    ts = _timestamps(df)
+
+    def hours_earlier(h: int) -> np.ndarray:
+        before = known.reindex(ts - pd.Timedelta(hours=h)).to_numpy(dtype=np.float64)
+        return np.where(np.isnan(before), own, before).astype(int)
+
+    out = df.copy()
+    out["ws_lag1"] = hours_earlier(1)
+    out["wet3"] = np.maximum.reduce([hours_earlier(1), hours_earlier(2), hours_earlier(3)])
+    return out
+
+
 def load_train(cfg: dict) -> pd.DataFrame:
-    """Labelled training table (n, 15) with `dteday` parsed to datetime."""
-    return pd.read_csv(cfg["paths"]["train"], parse_dates=["dteday"])
+    """Labelled training table with `dteday` parsed to datetime and the weather memory columns added.
+
+    The memory columns are computed from the training file alone (its own rows are the timeline)."""
+    return add_weather_memory(pd.read_csv(cfg["paths"]["train"], parse_dates=["dteday"]))
 
 
 def load_test(cfg: dict) -> pd.DataFrame:
-    """Unlabelled hidden-test table; call only from the final prediction step."""
-    return pd.read_csv(cfg["paths"]["test"], parse_dates=["dteday"])
+    """Unlabelled hidden-test table with the weather memory columns; call only from the final prediction step.
+
+    The timeline is the input columns (dteday, hr, weathersit) of the training file AND of this file, so the first
+    hour of a hidden day sees the last hour of the day before. No label is read for this."""
+    test_df = pd.read_csv(cfg["paths"]["test"], parse_dates=["dteday"])
+    train_inputs = pd.read_csv(cfg["paths"]["train"], parse_dates=["dteday"], usecols=MEMORY_INPUT_COLUMNS)
+    timeline = pd.concat([train_inputs, test_df[MEMORY_INPUT_COLUMNS]], ignore_index=True)
+    return add_weather_memory(test_df, lookup=timeline)
 
 
 def seeded_split(df: pd.DataFrame, seed: int, test_size: float = 0.20) -> tuple[pd.DataFrame, pd.DataFrame]:
