@@ -45,7 +45,7 @@ def test_gradient_check(k):
     X, y, _ = log_linear_data(200, 5, 3)
     r = np.random.default_rng(4)
     for _ in range(3):
-        w = r.normal(size=5) * 0.4
+        w = r.normal(size=5) * 0.15
         w[0] = r.uniform(1.0, 2.0)
         assert np.abs(X @ w).max() <= 3.0
         resid = np.expm1(X @ w) - y

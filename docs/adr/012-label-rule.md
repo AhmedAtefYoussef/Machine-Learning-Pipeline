@@ -1,0 +1,7 @@
+# ADR-012 Phase 5 label: above the 75th percentile of its (year, day type, hour) cell; operating threshold 0.25
+status: accepted        phase: p5        owner: chief
+context: R11: the label must be meaningful to the operator and not trivially biased; a single global threshold has a flaw we must identify and fix.
+options: global 75th percentile / per (workingday, hr) / per (yr, workingday, hr)
+evidence: exp/eda0/eda_label.json (diagnostic probe, validation rows). Global: hour dummies alone AUC 0.855, full model 0.983: the label is the clock. Per (workingday, hr): hour-only AUC 0.53 but positives are 5.4% of 2011 hours and 42.1% of 2012 hours, trend alone AUC 0.81: the label is the calendar. Per (yr, workingday, hr): positives 23.9% / 26.2% by year, hour-only AUC 0.50, trend-only 0.58, full model about 0.85; smallest cell has 50 training rows.
+decision: (yr, workingday, hr) cells, 75th percentile, thresholds from the training portion only. The quantile 0.75 marks the busiest quarter of comparable hours, the level at which a normal allocation runs short. Probability cut-off = 1/(1+3) = 0.25 from the same 3:1 miss / false-alarm cost ratio as the bonus; 0.5 and the F1-optimal cut-off are reported for comparison.
+consequences: a new year has no cell of its own; in production the thresholds would be rolled forward (for example last year's cell scaled by the fitted trend). Stated as a limitation.

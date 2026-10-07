@@ -1,0 +1,15 @@
+{
+  "spec_id": "S-0-04",
+  "agent": "qa-engineer",
+  "status": "done",
+  "files_changed": ["tests/conftest.py", "tests/test_common.py", "tests/test_features.py", "tests/test_gd.py", "tests/test_gd_asym.py", "tests/test_regularization.py", "tests/test_logistic.py", "handoff/receipts/R-0-04.json"],
+  "tests": [
+    {"name": "pytest tests (176 collected)", "pass": true, "value": "176 passed, 0 failed, 3.3 s"},
+    {"name": "leak_scan tests", "pass": true, "value": "0 findings"}
+  ],
+  "metrics_path": null,
+  "deviations": ["Tests written before src/*.py was opened. Two of my own test-data bugs fixed (w range in gd_asym gradient check; make_xy index for p<10); no tolerance changed."],
+  "questions": ["Doc inconsistency only: ARCHITECTURE section 7 names the metric f1_precision_recall, S-0-03 and src/logistic.py:97 implement prf; tests accept either name."],
+  "notes": "All 7 modules present and all tests pass; no suspected implementation defects. Tests importorskip-guarded at module top.",
+  "usage_note": "approx 25 turns"
+}

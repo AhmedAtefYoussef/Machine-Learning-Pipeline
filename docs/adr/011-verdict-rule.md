@@ -1,0 +1,7 @@
+# ADR-011 Column verdict rule and survivor rule (fixed before the phase runs)
+status: accepted        phase: p4        owner: chief
+context: R10 wants useful / redundant / uninformative for all 14 input columns with numbers; L1 picks arbitrarily among near-duplicates (temp/atemp r = 0.985; exact dependencies among weekday, workingday, holiday and between season and mnth).
+options: lasso zeros only / drop tests only / combined rule
+evidence: docs/DATA_CARD.md redundancy section; exp/eda0 drop tests behave as "dropping one of a pair costs nothing, dropping both costs a lot".
+decision: reference model = ridge at its chosen λ on the Phase 4 design. For column c: drop-alone ΔR2 (all features involving c removed) with a paired bootstrap interval; drop-group ΔR2 (c and its partners: {temp, atemp}, {season, mnth, dteday}, {yr, instant, dteday}, {weekday, workingday, holiday}); solo R2 (only c's own features). useful = drop-alone interval above 0 and Δ ≥ 0.001. redundant = not useful, but the group drop hurts or solo R2 ≥ 0.01. uninformative = neither. In a group where the group drop hurts but no member is useful alone, the member with the highest solo R2 is kept as the useful representative. Lasso non-zero counts, selection frequency over 50 day-bootstrap resamples, entry order, correlations and VIF are reported as supporting evidence. Survivors for Phase 5 = lasso-nonzero at the chosen λ, selection frequency ≥ 0.6, and every source column useful.
+consequences: a column can be "redundant" although lasso keeps it; the table says by which column it is carried.

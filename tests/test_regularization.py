@@ -16,7 +16,8 @@ def make_xy(n=300, p=15, seed=0, offset=True, dup=False):
         X[:, 4] = 0.99 * X[:, 3] + np.sqrt(1 - 0.99 ** 2) * r.normal(size=n)
     X = (X - X.mean(0)) / X.std(0)
     w_true = np.zeros(p)
-    w_true[[0, 3, 6, 9]] = [1.5, -1.0, 0.7, 0.4]
+    idx = [i for i in (0, 3, 6, 9) if i < p]
+    w_true[idx] = [1.5, -1.0, 0.7, 0.4][: len(idx)]
     y = X @ w_true + 2.0 + r.normal(size=n)
     if offset:
         X = X + r.uniform(-1, 1, size=p)  # not centred: solver must handle the intercept

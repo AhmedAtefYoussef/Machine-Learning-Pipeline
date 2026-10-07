@@ -235,7 +235,7 @@ def test_expanded_first_36_equal_base_and_base_scaler_reuse(base_design, train_d
     assert d_lift.names == d_plain.names
     assert np.abs(d_lift.transform(train_df) - Xp).max() < 1e-12
     # base_scaler wins over the fit frame's own statistics for base columns
-    d_other = Design(spec).fit(val_df, base_scaler=base_design.scaler_dict())
+    d_other = Design(spec).fit(val_df, base_scaler=base_design.scaler_dict())  # leak-ok: oracle test of base_scaler precedence on a throwaway frame
     assert np.abs(d_other.transform(val_df)[:, :36] - base_design.transform(val_df)).max() < 1e-12
 
 
