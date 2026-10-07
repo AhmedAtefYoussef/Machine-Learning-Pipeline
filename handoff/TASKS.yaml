@@ -1,0 +1,30 @@
+# Single task board (chief-owned). Agents write their own ledgers in handoff/ledger/<agent>.jsonl; chief folds them in here.
+# status: todo | running | review | done | blocked      wave: tasks with equal wave and no unmet deps run concurrently
+# paths_owned: the only paths this task may write. Two concurrent tasks must never share a path.
+- id: T-000-01
+  title: common.py, split, metrics, gradient checker, artifact writer
+  agent: coder
+  wave: 0
+  deps: []
+  paths_owned: [src/common.py, tests/test_common.py]
+  spec: handoff/specs/S-0-01.md
+  budget: {max_turns: 40, effort: medium, token_note: "<=60k"}
+  status: todo
+- id: T-000-02
+  title: oracle + gradient-check tests written from SPEC, without reading implementation
+  agent: qa-engineer
+  wave: 0
+  deps: []
+  paths_owned: [tests/test_oracles.py, tests/test_gradcheck.py]
+  spec: handoff/specs/S-0-02.md
+  budget: {max_turns: 30, effort: high, token_note: "<=50k"}
+  status: todo
+- id: T-000-03
+  title: pre-mortem of the design (failure modes, leakage paths, validation optimism)
+  agent: analyst
+  wave: 0
+  deps: []
+  paths_owned: [reports/analysis/premortem.md]
+  spec: handoff/specs/S-0-03.md
+  budget: {max_turns: 25, effort: high, token_note: "<=60k"}
+  status: todo

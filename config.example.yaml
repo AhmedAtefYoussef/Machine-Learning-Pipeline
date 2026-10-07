@@ -1,0 +1,11 @@
+# Copy to config.yaml and fill in. Never guess IDs.
+team_ids: ["<id1>", "<id2>", "<id3>"]   # strings; 2-3 members
+paths: {train: data/train.csv, test: data/test.csv, sample_submission: data/sample_submission.csv, description: Project_1_description.md}
+split: {test_size: 0.20}                    # seed is derived from team_ids, never typed here
+chrono: {cut_date: "2012-07-01"}            # Phase 3 chronological split; revisit with a second cut
+threads: 1                                  # OMP/MKL threads per process: parallelize across processes, not inside them
+# Hyperparameters below are filled by the phases and recorded in artifacts; keep this block for the live-defense re-run knobs.
+p1: {lr: null, tol: 1.0e-10, max_iter: 50000}
+p2: {degree: null, expand: []}
+p4: {lambda_grid: [1.0e-4, 1.0e2, 40], l1_ratios: [0.1, 0.3, 0.5, 0.7, 0.9, 0.95]}
+p5: {quantile: 0.75, group_by: [workingday, hr]}

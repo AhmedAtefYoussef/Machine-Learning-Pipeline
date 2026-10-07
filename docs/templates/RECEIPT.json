@@ -1,0 +1,12 @@
+{
+  "spec_id": "S-1-01",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/gd.py", "tests/test_gd.py"],
+  "tests": [{"name": "gradcheck_mse", "pass": true, "value": 3.1e-8}, {"name": "oracle_weights_inf", "pass": true, "value": 4.0e-5}],
+  "metrics_path": "artifacts/p1.json",
+  "deviations": [],
+  "questions": [],
+  "notes": "<=5 lines, no code",
+  "usage_note": "approx tokens or turns used"
+}
