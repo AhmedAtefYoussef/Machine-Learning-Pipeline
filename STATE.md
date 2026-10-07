@@ -1,6 +1,6 @@
 # STATE (chief; resume from here, not from a transcript)
 
-seed 44615 (IDs 16007032, 16009837, 16006283; **user must confirm these are the registered roster**, AMBIGUITIES A2) · deadline 18 Oct 2026
+seed 44615 (IDs 16007032, 16009837, 16006283; confirmed by the user as the registered roster on 2026-10-07) · deadline 18 Oct 2026
 env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>` (all | p1..p5 | submission | nb | report | verify-fast | verify | fingerprint). Phase 4 ≈ 20 min; the notebook loads the stored p4/p5 artifacts when config and upstream are unchanged.
 
 ## Deliverables (repo root)
@@ -25,9 +25,9 @@ ADR-013 (P3 target: plateau rule instead of argmax) · ADR-014 (final model on s
 validation scores optimistic (tuned on the same rows) · 5 Lasso grid points on the full design hit the sweep cap (none chosen) · eta cap in validation.fit_predict (inert for all reported fits) · trend extrapolation · no zero-demand hours in the data
 
 ## Definition of done
-- [x] D1 · [x] D2 (leak_scan 0; tests) · [x] D3 · [x] D4 (chain_check 5/5; p6 upstream ok) · [x] D5 · [x] D6 · [x] D7 · [x] D8 (0 TODO stubs; Expectation commits precede artifacts) · [x] D9 (run.py nb errors=0) · [x] D10 (5 pages; number_trace 0 untraced) · [x] D11 (submission_check 0 failures, 0 warnings) · [x] D12 bonus (p1.bonus) · [x] D13 WALKTHROUGH · [x] D14 · [x] D15 TRACE verified + `run.py verify` strict · [x] D16 reports/analysis/audit.md (stop condition b after ADR-015) · [x] D17 verifier H1–H13 · [x] D18 TOKENS (conclusion from the ledger; explain-usage skill not run) · [x] D19 final audit (its fix 1, roster confirmation, is for the user)
+- [x] D1 · [x] D2 (leak_scan 0; tests) · [x] D3 · [x] D4 (chain_check 5/5; p6 upstream ok) · [x] D5 · [x] D6 · [x] D7 · [x] D8 (0 TODO stubs; Expectation commits precede artifacts) · [x] D9 (run.py nb errors=0) · [x] D10 (5 pages; number_trace 0 untraced) · [x] D11 (submission_check 0 failures, 0 warnings) · [x] D12 bonus (p1.bonus) · [x] D13 WALKTHROUGH · [x] D14 · [x] D15 TRACE verified + `run.py verify` strict · [x] D16 reports/analysis/audit.md (stop condition b after ADR-015) · [x] D17 verifier H1–H13 · [x] D18 TOKENS (conclusion from the ledger; explain-usage skill not run) · [x] D19 final audit (its fix 1, roster confirmation, done 2026-10-07)
 
 ## Open for the user
-1. Confirm the roster IDs (a different roster means `python run.py all`, `python -m src.bonus_control`, `python run.py submission`, `python run.py nb`, `python run.py report`, about 30 minutes).
+1. Roster IDs confirmed on 2026-10-07; no rebuild needed.
 2. Submit the notebook together with `src/`, `config.yaml`, `data/` and `artifacts/` (it imports `src/`).
 3. Rehearse with docs/WALKTHROUGH.md; the git history shows how the work was produced.
