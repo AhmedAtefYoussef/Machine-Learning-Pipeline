@@ -51,7 +51,8 @@ print(rows.round(4).to_string(index=False))
 print("chosen degree:", p2["degree"], "(smallest within", p2["plateau_tol"], "of the best validation R2)")
 
 # %%
-plots.plot_degree_sweep(p2)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plots.plot_degree_sweep(p2))
 
 # %%
 cols = pd.DataFrame(p2["power_col_sweep"])[["power_cols", "n_features", "iterations", "stop_reason", "train_r2", "val_r2"]]
@@ -78,7 +79,7 @@ print("stop reason:", p2["stop_reason"], "after", p2["iterations"], "iterations;
       p2["oracle"]["max_abs_weight_diff"])
 
 # %%
-plots.plot_residual_profile(p1, p2)
+show(plots.plot_residual_profile(p1, p2))
 
 # %% [markdown]
 # ## Outcome — Phase 2

@@ -42,7 +42,8 @@ print("train / validation :", train_df.shape, val_df.shape)
 print("columns       :", ", ".join(train_all.columns))
 
 # %%
-plots.plot_demand_profile(train_df)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plots.plot_demand_profile(train_df))
 
 # %%
 quirks = pd.Series({

@@ -1,0 +1,27 @@
+{
+ "task": "S-4-03",
+ "status": "done",
+ "files_changed": ["src/phases/p4.py", "nb/p4_regularization.py (one code cell)", "run.py", "src/common.py", "src/validation.py", "src/phases/p5.py", "src/logistic.py (3 lambdas to defs, lint)", "tests/test_validation.py (xfail removed)", "artifacts/p1..p6.json", "sample_submission.csv"],
+ "checks": {
+  "pytest": "231 passed",
+  "verify-fast": "exit 0; chain_check 5/5, p6 chain: upstream ok",
+  "submission_check": "0 failures, 0 warnings",
+  "build_nb": "errors=0, structure_problems=0; p4 and p5 loaded from cache",
+  "rerun_p1_p2_p3_p5_predict": "byte-identical",
+  "ruff_src_run_report": "23 before, 20 after (remaining: report/make_figs.py E702, out of scope)",
+  "p4_runtime_s": 1395.5
+ },
+ "results": {
+  "survivor_counts": {"useful_design": 280, "lasso_nonzero": 279, "stable": 279},
+  "selection": {"lambda": 0.00018195, "val_r2": 0.9390, "not_converged": 0},
+  "stage_B": {"l2": {"lambda": 0.0017013, "val": 0.9389, "day_block": 0.9427, "chrono": 0.9139, "nonzero": 279},
+              "l1": {"lambda": 0.00018195, "val": 0.9390, "day_block": 0.9427, "chrono": 0.9142, "nonzero": 279},
+              "enet": {"lambda": 0.00076807, "rho": 0.3, "val": 0.9390, "day_block": 0.9428, "chrono": 0.9141, "nonzero": 272}},
+  "recommended": "enet (candidates l2, l1, enet)",
+  "dteday_features_surviving": "5 of 5",
+  "not_converged": {"stage_A": 5, "selection": 0, "stage_B": 0, "rich_check": 0},
+  "p5": {"accuracy": 0.789, "f1": 0.663, "roc_auc": 0.886, "threshold": 0.25, "l2": 0.0001, "iterations": 15193}
+ },
+ "questions": [],
+ "notes": ["Markdown cells untouched: nb/p4 survivor markdown and nb/p5 line 145 still reference p4.survivor_counts.after_verdicts (removed key); chief must rewrite to useful_design/lasso_nonzero/stable. report/report.template.md may reference it too.", "Selection Lasso keeps 279 of 280 columns at its validation-chosen lambda, so the stability and non-zero filters remove almost nothing."]
+}

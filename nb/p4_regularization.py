@@ -53,7 +53,8 @@ print("solver tolerance:", p4["solver"]["tol"], "| max sweeps:", p4["solver"]["m
 print({k: round(v, 5) for k, v in p4["unregularised"].items()})
 
 # %%
-fig = plot_validation_curves(p4)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plot_validation_curves(p4))
 
 # %%
 # Chosen hyper-parameters (best validation R2 on each path; ties go to the larger alpha).
@@ -95,13 +96,13 @@ picks = pd.DataFrame([{"method": m, "validation_best": p4["methods"][m]["lambda"
 print(picks.round(5).to_string(index=False))
 
 # %%
-fig = plot_cv_vs_validation(p4, "l1")
+show(plot_cv_vs_validation(p4, "l1"))
 
 # %%
-fig = plot_paths(p4, "l1")
+show(plot_paths(p4, "l1"))
 
 # %%
-fig = plot_paths(p4, "l2")
+show(plot_paths(p4, "l2"))
 
 # %%
 # Where does each correlated pair enter the lasso path? (largest alpha with a non-zero weight; None = never)
@@ -135,15 +136,17 @@ for col, v in p4["column_verdicts"].items():
 print(pd.DataFrame(rows).to_string(index=False))
 
 # %%
-fig = plot_verdicts(p4)
+show(plot_verdicts(p4))
 
 # %%
-fig = plot_stability(p4)
+show(plot_stability(p4))
 
 # %% [markdown]
 # ### Justification: the survivor rule
 #
-# The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible: a feature survives if its Lasso weight is non-zero at the chosen penalty ({{p4.survivor_counts.lasso_nonzero}} features), it is selected in at least {{p4.stability_threshold}} of the day-resampled Lasso fits ({{p4.survivor_counts.stable}} remain), and every original column it is built from has the verdict "useful" ({{p4.survivor_counts.after_verdicts}} remain). The third condition is what removes copies that Lasso happened to keep.
+# The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible. The order matters. We first remove every feature built from a column that is not "useful"; there are {{p4.survivor_counts.useful_design}} features left. On that reduced design we run Lasso again (penalty chosen by validation R²: {{p4.selection.lambda:.1e}}), and a feature survives if its weight is non-zero ({{p4.survivor_counts.lasso_nonzero}} features) and it is selected in at least {{p4.stability_threshold}} of 50 Lasso fits on resampled training days ({{p4.survivor_counts.stable}} remain).
+#
+# Our first version did it the other way round: take the Lasso zeros from the full design, then remove the copies. That turned out to be wrong for a reason worth stating. With month dummies, `yr` and `instant` in the design, Lasso let them stand in for some of the trend and day-of-year terms and zeroed those; the verdict step then removed the stand-ins as redundant, and the survivors had lost part of the time description twice. Validation R² hardly noticed, but the chronological score fell by about 0.013. Lasso should choose among features only after its choices are no longer between copies.
 
 # %%
 # Survivors: Lasso on the design of useful columns only; non-zero at its chosen lambda and stable over resampled days.
@@ -157,7 +160,7 @@ print("survivor columns (expanded features):", len(p4["survivors_expanded"]))
 # %% [markdown]
 # ### Justification: final model on the surviving columns
 #
-# Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing on validation and make the model worse on later months (chronological R² {{p4.methods.l2.chrono_r2:.3f}} with them, {{p4.final.unregularised.chrono_r2:.3f}} without). So we repeat exactly the same search for the three methods on the surviving columns only (stage B) and recommend among those. Rule, fixed in advance: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². We added this second stage after seeing the first Phase 4 run; the first run is in the git history.
+# Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing (dropping `mnth` alone changes validation R² by {{p4.column_verdicts.mnth.numbers.drop_alone.delta:.4f}}, interval {{p4.column_verdicts.mnth.numbers.drop_alone.lo:.4f}} to {{p4.column_verdicts.mnth.numbers.drop_alone.hi:.4f}}; a negative number means the model is better without it), and several of them are extra descriptions of time, which is exactly where our chronological split shows the model to be fragile. So we repeat the same search for the three methods on the surviving columns only (stage B) and recommend among those. Rule, fixed in advance: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². We added this second stage after seeing the first Phase 4 run; the earlier runs are in the git history.
 
 # %%
 # Stage B: the same search (ridge, lasso, elastic net) on the surviving columns only.
@@ -177,7 +180,7 @@ print("recommended: val R2", round(rec["val_r2"], 5), "| day-block", round(rec["
       "| chrono", round(rec["chrono_r2"], 5))
 
 # %%
-fig = plot_validation_curves(p4, stage="final")
+show(plot_validation_curves(p4, stage="final"))
 
 # %%
 # Does a penalty rescue the over-fit top of the ladder? (informational)
@@ -192,4 +195,20 @@ print("best penalised top level minus the recommended (surviving-column) model:"
 # %% [markdown]
 # ## Outcome — Phase 4
 #
-# TODO(chief)
+# **What happened.**
+# - **The three methods are tied, and none clearly beats the unpenalised fit.** On the full design: Ridge {{p4.methods.l2.val_r2:.4f}}, Lasso {{p4.methods.l1.val_r2:.4f}}, Elastic Net {{p4.methods.enet.val_r2:.4f}} validation R², against {{p4.unregularised.val_r2:.4f}} without a penalty; every paired interval between methods contains zero, and the gain over no penalty is about {{p4.comparisons.l2_minus_unregularised.delta:.4f}}. The chosen penalties are tiny (Ridge {{p4.methods.l2.lambda:.1e}}, Lasso {{p4.methods.l1.lambda:.1e}}, Elastic Net {{p4.methods.enet.lambda:.1e}} with l1_ratio {{p4.methods.enet.l1_ratio}}). As expected after an "under-fit" diagnosis, regularization here is insurance.
+# - **Where there is variance, the penalty works.** On the over-fit top ladder level Lasso raises validation R² from {{p4.rich_check.unregularised_val_r2:.4f}} to {{p4.rich_check.l1.val_r2:.4f}} while keeping {{p4.rich_check.l1.n_nonzero}} of {{p4.rich_check.n_features}} weights. That is still not better than our recommended model (difference {{p4.rich_check.paired_best_vs_recommended.delta:.4f}}, interval {{p4.rich_check.paired_best_vs_recommended.lo:.4f}} to {{p4.rich_check.paired_best_vs_recommended.hi:.4f}}).
+# - **Lasso is not sparse:** it keeps {{p4.methods.l1.n_nonzero}} weights. The signal is spread over many hour-specific columns.
+# - **Verdicts** (table above). Useful: `hr` (dropping it costs {{p4.column_verdicts.hr.numbers.drop_alone.delta:.3f}}), `temp` ({{p4.column_verdicts.temp.numbers.drop_alone.delta:.4f}}), `workingday` ({{p4.column_verdicts.workingday.numbers.drop_alone.delta:.4f}}), `weathersit` ({{p4.column_verdicts.weathersit.numbers.drop_alone.delta:.4f}}), `weekday` ({{p4.column_verdicts.weekday.numbers.drop_alone.delta:.4f}}), `hum` ({{p4.column_verdicts.hum.numbers.drop_alone.delta:.4f}}), `windspeed` ({{p4.column_verdicts.windspeed.numbers.drop_alone.delta:.4f}}), and `dteday` as the kept representative of time. Redundant: `atemp` (dropping it costs {{p4.column_verdicts.atemp.numbers.drop_alone.delta:.4f}}, dropping it together with `temp` costs {{p4.column_verdicts.atemp.numbers.drop_group.delta:.4f}}), `yr` and `instant` (together with the date terms {{p4.column_verdicts.yr.numbers.drop_group.delta:.4f}}, alone nothing), `season` and `mnth`, and `holiday` (fully determined by `weekday` and `workingday`). No column came out uninformative.
+# - **Survivors:** {{p4.survivor_counts.stable}} features from the eight useful original columns.
+# - **Final model (stage B):** all three methods again within noise; recommended {{p4.recommended.method}} with λ = {{p4.recommended.lambda:.1e}}: validation R² {{p4.recommended.val_r2:.4f}}, RMSE {{p4.recommended.val_rmse:.1f}} bikes, held-out days {{p4.recommended.day_block_r2:.4f}}, chronological {{p4.recommended.chrono_r2:.3f}}.
+#
+# **What surprised us.**
+# - **Lasso's choices between copies were as arbitrary as we feared, and in one case backwards.** It keeps `atemp` in {{p4.column_verdicts.atemp.numbers.lasso.max_freq_own:.2f}} of the resampled fits although dropping `atemp` costs nothing, and it never keeps `instant` (frequency {{p4.column_verdicts.instant.numbers.lasso.max_freq_own:.2f}}) although `instant` alone explains {{p4.column_verdicts.instant.numbers.solo_r2:.3f}} of the variance. "Lasso set it to zero" was evidence for us, but it would have misled us without the drop tests.
+# - **`dteday` is useful only as a group.** Dropping the trend and day-of-year terms alone costs {{p4.column_verdicts.dteday.numbers.drop_alone.delta:.4f}}, because `yr`, `instant`, `season` and `mnth` then step in; dropping them all costs {{p4.column_verdicts.dteday.numbers.drop_group.delta:.3f}}. We had predicted the copies would be redundant; we had not expected them to be able to replace the original so completely.
+# - **`mnth` is slightly harmful.** Removing it improves validation R² (see above). Month dummies add steps to a season that the smooth day-of-year terms already describe.
+# - **`windspeed` is useful after all**, but only because Phase 3's weather-detail level gave it a square and an interaction with temperature. In our first Phase 4 run, with wind as a single linear column, the same rule called it uninformative. A verdict about a column is a verdict about the column *as we represented it*.
+# - **Our own survivor rule was wrong at first** (see the justification above): taking Lasso zeros before removing the copies quietly cost robustness on later months.
+# - Some Lasso fits at one large penalty value on the full design ran out of sweeps ({{p4.not_converged.count}} fits; none is a chosen model). The exactly duplicated columns are the cause; on the survivors every fit converged.
+#
+# **Handed to Phase 5:** the surviving feature list. Handed to the submission: the stage-B recommended model.

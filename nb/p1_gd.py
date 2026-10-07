@@ -47,14 +47,15 @@ sweep = pd.DataFrame([{"fraction of bound": r["fraction"], "lr": r["lr"], "stop"
 print(sweep.round(4).to_string(index=False))
 
 # %%
-plots.plot_lr_sweep(p1)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plots.plot_lr_sweep(p1))
 
 # %%
 print("stop reason :", p1["stop_reason"])
 print("iterations  :", p1["iterations"])
 print("final loss  :", round(p1["train_loss_final"], 6))
 print("gradient norm at the end:", p1["grad_norm_final"], "(tolerance", p1["tol_grad"], ")")
-plots.plot_loss_curve(p1)
+show(plots.plot_loss_curve(p1))
 
 # %%
 oracle = p1["oracle"]
@@ -88,7 +89,7 @@ ablation.index.name = "hour encoding"
 print(ablation.to_string())
 
 # %%
-plots.plot_residual_profile(p1)
+show(plots.plot_residual_profile(p1))
 
 # %% [markdown]
 # ### Justification: bonus
@@ -109,7 +110,7 @@ print(compare.round(4).to_string())
 print("mean prediction ratio asymmetric / MSE:", round(bonus["mean_shift_ratio"], 4))
 
 # %%
-plots.plot_bonus_shift(p1)
+show(plots.plot_bonus_shift(p1))
 
 # %% [markdown]
 # ## Outcome — Phase 1

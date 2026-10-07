@@ -53,7 +53,8 @@ print(pd.Series(summary, name="value").to_string())
 # %%
 labelled_df, test_df = load_train(CFG), load_test(CFG)
 sub = pd.read_csv(predict.SUBMISSION_PATH)
-plot_test_profile(labelled_df, test_df, sub)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plot_test_profile(labelled_df, test_df, sub))
 
 # %%
 # The same checks as tools/submission_check.py, inline (hard failures are asserts).

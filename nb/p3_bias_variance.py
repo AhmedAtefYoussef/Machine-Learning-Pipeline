@@ -55,7 +55,8 @@ print("target level:", p3["target_level"], "| best on held-out days:", p3["best_
       "| best chronologically:", p3["best_level_chrono"], "| over-fit from level:", p3["overfit_from_level"])
 
 # %%
-fig = plot_ladder(p3)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plot_ladder(p3))
 
 # %%
 # Degree axis: anchor blocks and power columns fixed, only the degree changes.
@@ -66,7 +67,7 @@ print(degrees.round(4).to_string(index=False))
 print("range of seeded R2 over degrees >= 2:", round(p3["diagnosis"]["degree_axis_range"], 5))
 
 # %%
-fig = plot_degree_axis(p3)
+show(plot_degree_axis(p3))
 
 # %%
 # Learning curves for the anchor, the target and the top of the ladder (clipped at R2 = -0.2 in the plot).
@@ -74,7 +75,7 @@ curves = pd.DataFrame([{"design": key, **c} for key, curve in p3["learning_curve
 print(curves.round(4).to_string(index=False))
 
 # %%
-fig = plot_learning_curves(p3)
+show(plot_learning_curves(p3))
 
 # %% [markdown]
 # ### Justification: the chronological cut
@@ -94,7 +95,7 @@ print(pd.DataFrame(rows).round(4).to_string(index=False))
 print("paired gain target - anchor (seeded):", {k: round(v, 4) for k, v in p3["paired_target_vs_anchor"].items()})
 
 # %%
-fig = plot_three_estimates(p3)
+show(plot_three_estimates(p3))
 
 # %% [markdown]
 # ### Justification: which estimate to trust

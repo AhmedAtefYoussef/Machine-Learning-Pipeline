@@ -127,7 +127,7 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 </tr>
 <tr>
 <td>Ridge (L2)</td>
-<td>4.9e-06</td>
+<td>0.000005</td>
 <td>–</td>
 <td>298</td>
 <td>0.9382</td>
@@ -137,7 +137,7 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 </tr>
 <tr>
 <td>Lasso (L1)</td>
-<td>1.8e-04</td>
+<td>0.000182</td>
 <td>–</td>
 <td>288</td>
 <td>0.9382</td>
@@ -147,7 +147,7 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 </tr>
 <tr>
 <td>Elastic Net</td>
-<td>6.1e-04</td>
+<td>0.000607</td>
 <td>0.3</td>
 <td>290</td>
 <td>0.9382</td>
@@ -157,7 +157,7 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 </tr>
 </tbody>
 </table>
-<p><strong>Comparison.</strong> The three are tied: the paired bootstrap intervals of every pairwise difference contain zero (for example Lasso − Ridge -0.0000, interval -0.0006 to 0.0006), and so does each method's gain over the unpenalised fit. Regularization here is insurance, not a cure, exactly what an &quot;under-fit&quot; diagnosis implies. Where the model is over-fit it does help: on the top ladder level Lasso lifts validation R² from 0.9334 to 0.9362 keeping 532 weights, still not above our recommended model (difference -0.0024, interval -0.0054 to 0.0006). Penalties chosen on held-out days instead would have changed validation R² by at most 0.001. Lasso is not sparse (288 weights survive): the signal is spread over many hour-specific columns.</p>
+<p><strong>Comparison.</strong> The three are tied: the paired bootstrap intervals of every pairwise difference contain zero (for example Lasso − Ridge -0.0000, interval -0.0006 to 0.0006); against the unpenalised fit the gain is at most 0.0009 (Ridge's interval 0.0001 to 0.0018 just clears zero). Regularization here is insurance, not a cure, exactly what an &quot;under-fit&quot; diagnosis implies. Where the model is over-fit it does help: on the top ladder level Lasso lifts validation R² from 0.9334 to 0.9362 keeping 532 weights, still not above our recommended model (difference -0.0028, interval -0.0057 to 0.0000). Penalties chosen on held-out days instead would have changed validation R² by at most 0.001. Lasso is not sparse (288 weights survive): the signal is spread over many hour-specific columns.</p>
 <p><strong>Verdict for every column.</strong> Rule fixed before the run; reference = Ridge at its chosen λ. <em>Useful:</em> dropping every feature built from the column lowers validation R² by at least 0.001 with a paired interval above zero. <em>Redundant:</em> dropping it alone costs nothing, but dropping it with its measured copies does, or it explains at least 0.01 on its own. <em>Uninformative:</em> neither. Where a group of copies matters but no member is missed alone, the member that explains most on its own is kept as the useful representative (marked *).</p>
 <table>
 <thead>
@@ -301,10 +301,10 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 </tbody>
 </table>
 <p>Three things in this table surprised us. Lasso's choice between copies is arbitrary and once backwards: it keeps <code>atemp</code>, which costs nothing to drop, in most resampled fits and never keeps <code>instant</code>, which alone explains 0.086; so &quot;Lasso set it to zero&quot; was evidence for us but never the verdict. <code>dteday</code> is useful only as a group: its copies can replace it completely (cost alone 0.0004, with them 0.120). And <code>windspeed</code> is useful only since Phase 3 gave it a square and an interaction with temperature; as a single linear column the same rule had called it uninformative. A verdict judges a column as we represented it (Figure 2a).</p>
-<p><strong>Survivors and final model (stage B).</strong> We first remove every feature built from a column that is not useful ({{p4.survivor_counts.useful_design}} features remain), then run Lasso on that reduced design; a feature survives if its weight is non-zero at the chosen λ and it is selected in at least 0.6 of 50 Lasso fits on resampled training days: 288 → 288 features. (Our first version took the Lasso zeros before removing the copies; Lasso had let month dummies and <code>instant</code> stand in for date terms, the verdict step then removed the stand-ins, and the chronological score fell by about 0.013. We corrected the order.) The redundant columns add nothing: dropping <code>mnth</code> alone changes validation R² by -0.0012, so the model is slightly better without it. We therefore repeated the same search on the survivors only and recommend among those: Ridge 0.9385 / 0.9423 / 0.901 (validation / held-out days / chronological), Lasso 0.9386 / 0.9423 / 0.901, Elastic Net 0.9386 / 0.9424 / 0.901. They are again tied on validation; our rule (within noise on validation, then best on held-out days) recommends <strong>enet</strong> with λ = 7.7e-04, l1_ratio 0.3: validation R² 0.9386, RMSE 45.7. This second stage was added after the first Phase 4 run; all runs are in the git history.</p>
+<p><strong>Survivors and final model (stage B).</strong> We first remove every feature built from a column that is not useful (280 features remain), then run Lasso on that reduced design; a feature survives if its weight is non-zero at the chosen λ and it is selected in at least 0.6 of 50 Lasso fits on resampled training days: 279 → 279 features. (Our first version took the Lasso zeros before removing the copies; Lasso had let month dummies and <code>instant</code> stand in for date terms, the verdict step then removed the stand-ins, and the chronological score fell by about 0.013. We corrected the order.) The redundant columns add nothing: dropping <code>mnth</code> alone changes validation R² by -0.0012, so the model is slightly better without it. We therefore repeated the same search on the survivors only and recommend among those: Ridge 0.9389 / 0.9427 / 0.914 (validation / held-out days / chronological), Lasso 0.9390 / 0.9427 / 0.914, Elastic Net 0.9390 / 0.9428 / 0.914. They are again tied on validation; our rule (within noise on validation, then best on held-out days) recommends <strong>enet</strong> with λ = 0.000768, l1_ratio 0.3: validation R² 0.9390, RMSE 45.5. This second stage was added after the first Phase 4 run; all runs are in the git history.</p>
 <h2>6 Phase 5: logistic regression</h2>
-<p><strong>Label.</strong> A single global threshold has an obvious flaw: &quot;high&quot; then just means rush hour. Under the global 75th percentile, hour dummies alone reach ROC-AUC 0.855 and the full model 0.985: impressive and useless, the operator already has a clock. A threshold per (day type, hour) fixes the clock but not the calendar: 0.054 of 2011 validation hours are positive against 0.421 of 2012, and the trend alone reaches 0.810. <strong>Our label:</strong> <code>cnt</code> above the 75th percentile of training hours with the same year, day type and hour (96 thresholds from the training rows, at least 50 hours each): &quot;busier than three quarters of comparable hours&quot;, the case where the normal allocation runs short. Positives are 0.246 of training and 0.250 of validation hours (0.239 / 0.262 by year); hour alone is at chance (0.502) and trend alone at 0.577.</p>
-<p><strong>Model.</strong> Our own logistic regression (gradient descent on the log-loss, lr = 1/(λ_max/4 + l2), gradient-checked) on the 288 Phase 4 survivors only (asserted). A small ridge term is chosen by validation ROC-AUC: l2 = 0.0001, 15307 iterations.</p>
+<p><strong>Label.</strong> A single global threshold has an obvious flaw: &quot;high&quot; then just means rush hour. Under the global 75th percentile, hour dummies alone reach ROC-AUC 0.855 and the full model 0.986: impressive and useless, the operator already has a clock. A threshold per (day type, hour) fixes the clock but not the calendar: 0.054 of 2011 validation hours are positive against 0.421 of 2012, and the trend alone reaches 0.810. <strong>Our label:</strong> <code>cnt</code> above the 75th percentile of training hours with the same year, day type and hour (96 thresholds from the training rows, at least 50 hours each): &quot;busier than three quarters of comparable hours&quot;, the case where the normal allocation runs short. Positives are 0.246 of training and 0.250 of validation hours (0.239 / 0.262 by year); hour alone is at chance (0.502) and trend alone at 0.577.</p>
+<p><strong>Model.</strong> Our own logistic regression (gradient descent on the log-loss, lr = 1/(λ_max/4 + l2), gradient-checked) on the 279 Phase 4 survivors only (asserted). A small ridge term is chosen by validation ROC-AUC: l2 = 0.0001, 15193 iterations.</p>
 <p><strong>Metrics for a 1:3 class balance.</strong> Always answering &quot;normal&quot; is right 0.750 of the time, so accuracy flatters; we read it with F1, precision, recall, ROC-AUC and PR-AUC. <strong>Threshold.</strong> A missed high-demand hour (empty docks) costs more than a false alarm; with the 3:1 ratio of the bonus the cost-minimising cut-off of a calibrated model is 1/(1+3) = 0.25.</p>
 <table>
 <thead>
@@ -322,27 +322,27 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 <tbody>
 <tr>
 <td>0.25 (ours)</td>
-<td>0.790</td>
-<td>0.661</td>
-<td>0.554</td>
-<td>0.820</td>
-<td>0.882</td>
-<td>0.725</td>
-<td>0.300</td>
+<td>0.789</td>
+<td>0.663</td>
+<td>0.553</td>
+<td>0.828</td>
+<td>0.886</td>
+<td>0.729</td>
+<td>0.297</td>
 </tr>
 <tr>
 <td>0.5</td>
-<td>0.823</td>
-<td>0.619</td>
-<td>0.670</td>
-<td>0.574</td>
-<td>0.882</td>
-<td>0.725</td>
-<td>0.390</td>
+<td>0.828</td>
+<td>0.633</td>
+<td>0.681</td>
+<td>0.591</td>
+<td>0.886</td>
+<td>0.729</td>
+<td>0.376</td>
 </tr>
 </tbody>
 </table>
-<p>ROC-AUC has a 95% interval of 0.866–0.897. At 0.25 we catch 0.82 of the high-demand hours at a precision of 0.55; at 0.5 accuracy looks better but 232 high-demand hours are missed instead of 98. On validation the cost is lowest at a cut-off of 0.25, close to the theoretical 0.25, and the largest calibration gap is 0.136. <em>Surprise:</em> accuracy is lower at our cut-off than at 0.5 and barely above the do-nothing baseline; judged by accuracy our operating point looks like a mistake, judged by the operator's cost (0.300 against 0.390 per hour) it is clearly better (Figure 2b). The honest label is also far harder than the trivial one (AUC 0.882 against 0.985): whether an hour is unusually busy for its slot depends on things we only partly observe.</p>
+<p>ROC-AUC has a 95% interval of 0.870–0.900. At 0.25 we catch 0.83 of the high-demand hours at a precision of 0.55; at 0.5 accuracy looks better but 223 high-demand hours are missed instead of 94. On validation the cost is lowest at a cut-off of 0.25, the theoretical value, and the largest calibration gap is 0.104. <em>Surprise:</em> accuracy is lower at our cut-off than at 0.5 and barely above the do-nothing baseline; judged by accuracy our operating point looks like a mistake, judged by the operator's cost (0.297 against 0.376 per hour) it is clearly better (Figure 2b). The honest label is also far harder than the trivial one (AUC 0.886 against 0.986): whether an hour is unusually busy for its slot depends on things we only partly observe.</p>
 <h2>7 Retrospective, final model and what we do not claim</h2>
 <table>
 <thead>
@@ -379,22 +379,22 @@ code { font-family: Consolas, monospace; font-size: 7.8pt; }
 <tr>
 <td>4 Regularization</td>
 <td>P3 target and diagnosis</td>
-<td>λ per method (table), 288 survivors, enet</td>
-<td>277</td>
-<td>R² 0.939, RMSE 45.7</td>
+<td>λ per method (table), 279 survivors, enet</td>
+<td>279</td>
+<td>R² 0.939, RMSE 45.5</td>
 </tr>
 <tr>
 <td>5 Logistic</td>
 <td>P4 survivors</td>
 <td>year × day type × hour label, cut-off 0.25</td>
-<td>278</td>
-<td>acc 0.790, F1 0.661, AUC 0.882</td>
+<td>280</td>
+<td>acc 0.789, F1 0.663, AUC 0.886</td>
 </tr>
 </tbody>
 </table>
 <p>The chain is checked in code: each artifact stores the hash of the one it consumed; Phase 2's first loss equals Phase 1's last; Phase 3's anchor is Phase 2's design; Phase 4's design is Phase 3's target; Phase 5's features are a subset of Phase 4's survivors. The story the numbers tell is one of bias: each step that added structure the data really has (day-type hour profiles, then weather by hour, then weekday profiles, then weather detail) raised validation R² from 0.72 to 0.94, while penalties, the classical cure for variance, changed nothing measurable.</p>
-<p><strong>Submitted model.</strong> enet on the Phase 4 survivors with the validated hyper-parameters, weights refitted on training + validation rows (10886 rows; the Phase 3 learning curve of the target is still rising at full size) with scaler and humidity fill kept as fitted on the training rows. Refit and validated model agree on the test rows (correlation 0.9997, mean ratio 1.001). Sanity of the 574 predictions: none negative, mean 197.8 bikes (training mean 191.6), per (day type, hour) cell between 0.77 and 1.09 times the training profile.</p>
-<p><strong>What we do not claim.</strong> (1) Validation scores are slightly optimistic: back-transform, degree, target level and penalties were all chosen on the same 2178 rows, and two rules (target level, stage B) and one ladder level were changed after first results; held-out days and the chronological split are our guard, and for unseen future months the honest figure is the chronological 0.901, not 0.939. (2) The trend is a straight line in log space: fine inside 2011–2012, too steep beyond. (3) The model has never seen a zero-demand hour, a new weather regime, or a holiday type absent from training; the Phase 5 thresholds exist only for the two observed years. (4) A diagnostic tree model kept outside the pipeline suggests a little accuracy is still left for a more flexible model class; within linear models we found no further change that beat the noise on held-out days.</p>
+<p><strong>Submitted model.</strong> enet on the Phase 4 survivors with the validated hyper-parameters, weights refitted on training + validation rows (10886 rows; the Phase 3 learning curve of the target is still rising at full size) with scaler and humidity fill kept as fitted on the training rows. Refit and validated model agree on the test rows (correlation 0.9997, mean ratio 1.001). Sanity of the 574 predictions: none negative, mean 197.6 bikes (training mean 191.6), per (day type, hour) cell between 0.77 and 1.08 times the training profile.</p>
+<p><strong>What we do not claim.</strong> (1) Validation scores are slightly optimistic: back-transform, degree, target level and penalties were all chosen on the same 2178 rows, and two rules (target level, stage B) and one ladder level were changed after first results; held-out days and the chronological split are our guard, and for unseen future months the honest figure is the chronological 0.914, not 0.939. (2) The trend is a straight line in log space: fine inside 2011–2012, too steep beyond. (3) The model has never seen a zero-demand hour, a new weather regime, or a holiday type absent from training; the Phase 5 thresholds exist only for the two observed years. (4) A diagnostic tree model kept outside the pipeline suggests a little accuracy is still left for a more flexible model class; within linear models we found no further change that beat the noise on held-out days.</p>
 <div class="figrow"><div><img src="figs/lr_sweep.png"><p class="cap"><b>Figure 1a.</b> Phase 1 loss for six learning rates given as fractions of the stability bound: stall, converge, diverge.</p></div><div><img src="figs/ladder.png"><p class="cap"><b>Figure 1b.</b> Phase 3 ladder: training R² keeps rising with the number of weights; the three held-out estimates peak at the target and then fall, the chronological one most.</p></div></div>
 <div class="figrow"><div><img src="figs/verdicts.png"><p class="cap"><b>Figure 2a.</b> Phase 4: validation R² lost when a column is dropped alone and together with its copies (dotted line: the 0.001 threshold).</p></div><div><img src="figs/threshold.png"><p class="cap"><b>Figure 2b.</b> Phase 5: precision, recall, F1 and operator cost against the probability cut-off (dotted lines: 0.25 and 0.5).</p></div></div>
 </body></html>

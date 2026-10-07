@@ -108,3 +108,14 @@ def plot_bonus_shift(p1: dict) -> Figure:
             label=f"asymmetric, k = {p1['bonus']['k']:g}")
     ax.legend()
     return fig
+
+
+def show(fig):
+    """Display a matplotlib figure as a PNG in the notebook (works with any backend) and return nothing."""
+    import io
+
+    from IPython.display import Image, display
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=110)
+    display(Image(buffer.getvalue()))
+

@@ -74,7 +74,8 @@ print(foils[["rule", "pos_train", "pos_val", "pos_val_2011", "pos_val_2012", "au
 print("foil fits that did not converge:", p5["foil_not_converged"])
 
 # %%
-plot_label_variants(p5)
+from src.plots import show  # displays a figure as a PNG in the notebook
+show(plot_label_variants(p5))
 
 # %% [markdown]
 # ### Justification: regularisation of the classifier
@@ -119,14 +120,14 @@ print(pd.DataFrame([[conf["tn"], conf["fp"]], [conf["fn"], conf["tp"]]], index=[
 print("cost ratio (miss : false alarm):", p5["cost_ratio"], "| 1/(1+c) =", p5["t_cost"])
 print("grid threshold with the lowest validation cost:", p5["t_cost_empirical"],
       "| with the highest F1:", p5["t_f1"])
-plot_threshold_curve(p5)
+show(plot_threshold_curve(p5))
 
 # %%
-plot_roc_pr(p5)
+show(plot_roc_pr(p5))
 
 # %%
 print("largest gap between predicted and observed share (bins with >= 30 rows):", round(p5["calibration_max_gap"], 4))
-plot_calibration(p5)
+show(plot_calibration(p5))
 
 # %%
 # What the classifier relies on: the largest standardised weights, and the share of sum|w| by original column.
@@ -142,7 +143,7 @@ print(pd.Series(p5["coef_abs_share_by_column"]).round(3).to_string())
 # - **Phase 1** gave a working optimiser and an honest baseline: validation R² {{p1.val_r2:.3f}} with {{p1.n_features}} weights. Its residuals showed the missing structure.
 # - **Phase 2** started from Phase 1's weights (first loss equal to Phase 1's last) and added what those residuals asked for: R² {{p2.val_r2:.3f}}.
 # - **Phase 3** showed that this model was still too simple, not too flexible, and that the gap to a chronological split is drift rather than leakage. It moved the target to {{p3.target_complexity.n_features}} weights: {{p3.estimates_target.seeded.r2:.3f}} on validation, {{p3.estimates_target.day_holdout.r2:.3f}} on held-out days, {{p3.estimates_target.chrono.r2:.3f}} chronologically.
-# - **Phase 4** found, as that diagnosis implies, that penalties change little (all three methods within noise of each other), used them to sort the 14 columns into useful, redundant and uninformative, and recommended {{p4.recommended.method}} on the {{p4.survivor_counts.after_verdicts}} surviving features: R² {{p4.recommended.val_r2:.3f}}, RMSE {{p4.recommended.val_rmse:.1f}}.
+# - **Phase 4** found, as that diagnosis implies, that penalties change little (all three methods within noise of each other), used them to sort the 14 columns into useful, redundant and uninformative, and recommended {{p4.recommended.method}} on the {{p4.survivor_counts.stable}} surviving features: R² {{p4.recommended.val_r2:.3f}}, RMSE {{p4.recommended.val_rmse:.1f}}.
 # - **Phase 5** reused exactly those features for a classifier: ROC-AUC {{p5.metrics.roc_auc:.3f}}, F1 {{p5.metrics.f1:.3f}}, accuracy {{p5.metrics.accuracy:.3f}} at the cost-based cut-off.
 #
 # The thread through all five: on this data the errors come from bias. Every gain came from giving the linear model structure the data really has; the classical variance cures (higher degree, stronger penalty) did nothing measurable. **The regression model our pipeline recommends, and the one behind our submission, is the Phase 4 stage-B model.**
@@ -166,6 +167,6 @@ for _, row in retro.iterrows():
 #
 # **What surprised us.**
 # - Accuracy is *lower* at our chosen cut-off ({{p5.metrics.accuracy:.3f}}) than at 0.5 ({{p5.metrics_at_0_5.accuracy:.3f}}), and barely above the do-nothing baseline of {{p5.class_balance.majority_accuracy:.3f}}. Judged by accuracy alone our operating point looks like a mistake; judged by the operator's cost it is clearly the better one. This is the clearest case in the project of a metric pointing the wrong way.
-# - The lowest validation cost was at {{p5.t_cost_empirical}} rather than exactly {{p5.t_cost}}, and the largest calibration gap is {{p5.calibration_max_gap:.3f}}: the probabilities are usable but not perfectly calibrated. We kept the theoretical cut-off instead of tuning it on the validation rows.
+# - The cost argument held more exactly than we expected: on our grid the validation cost is lowest at {{p5.t_cost_empirical}}, the theoretical value, even though the probabilities are not perfectly calibrated (largest gap {{p5.calibration_max_gap:.3f}}). We did not tune the cut-off on the validation rows.
 # - The honest task is much harder than the trivial one (AUC {{p5.label_variants.2.auc_full:.3f}} against {{p5.label_variants.0.auc_full:.3f}}). Whether an hour is unusually busy for its slot depends on things we only partly observe: the weather explains some of it, events and school holidays are not in the data.
 # - Even with the label made relative to the hour, hour-related columns still carry a large share of the weights (table above): the weather effect differs by hour, so the survivors' hour × weather interactions matter even though the hour alone predicts nothing.
