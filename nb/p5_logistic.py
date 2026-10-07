@@ -37,8 +37,7 @@ from src.common import cached_or_run, load_config, read_artifact
 from src.phases import p5 as p5mod
 from src.plots_p5 import plot_calibration, plot_label_variants, plot_roc_pr, plot_threshold_curve
 
-CFG = globals().get("CFG") or load_config()
-p5 = cached_or_run("p5", p5mod.run, CFG, upstream="p4")  # writes artifacts/p5.json when it has to run
+p5 = phase("p5", p5mod.run, upstream="p4")  # writes artifacts/p5.json when it has to run
 
 # %%
 # The chain: every feature of this phase must be a survivor of Phase 4.

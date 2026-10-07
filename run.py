@@ -143,6 +143,8 @@ def render_notebook_sources() -> int:
 def nb() -> int:
     if render_notebook_sources() != 0:
         return 1
+    if tool("embed_bundle", "build/nb/p0_setup.py") != 0:   # project files travel inside the notebook (Colab)
+        return 1
     return tool("build_nb", "--src", "build/nb", "--execute", "--out", "rush_hour.ipynb", "--timeout", "3600")
 
 

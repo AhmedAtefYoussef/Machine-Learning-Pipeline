@@ -32,8 +32,7 @@ from src.common import load_config, read_artifact
 from src.phases import p3 as p3mod
 from src.plots_p3 import plot_degree_axis, plot_ladder, plot_learning_curves, plot_three_estimates
 
-CFG = globals().get("CFG") or load_config()
-p3 = p3mod.run(CFG)  # writes artifacts/p3.json; about 10 seconds
+p3 = phase("p3", p3mod.run, upstream="p2")  # loads artifacts/p3.json, or runs Phase 3
 
 # %%
 # The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R2.

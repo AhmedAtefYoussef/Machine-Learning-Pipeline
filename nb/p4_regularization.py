@@ -34,8 +34,7 @@ from src.phases import p4 as p4mod
 from src.plots_p4 import (plot_cv_vs_validation, plot_paths, plot_stability, plot_validation_curves,
                           plot_verdicts)
 
-CFG = globals().get("CFG") or load_config()
-p4 = cached_or_run("p4", p4mod.run, CFG, upstream="p3")
+p4 = phase("p4", p4mod.run, upstream="p3")
 
 # %%
 # The chain: target level from Phase 3, candidate columns added, resulting width (n_features counts the bias column).
