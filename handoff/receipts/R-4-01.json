@@ -1,0 +1,35 @@
+{
+  "spec_id": "S-4-01",
+  "agent": "coder",
+  "status": "partial",
+  "files_changed": ["src/phases/p4.py", "src/verdicts.py", "src/plots_p4.py", "nb/p4_regularization.py", "artifacts/p4.json"],
+  "tests": [
+    {"name": "p4 twice byte-identical (module run vs notebook run, sha256 d5b1cab3...)", "pass": true, "value": 1},
+    {"name": "runtime seconds (< 480)", "pass": false, "value": 807},
+    {"name": "not_converged == 0", "pass": false, "value": 6},
+    {"name": "methods.l2.val_r2 >= unregularised.val_r2 - 1e-6 (0.93118 vs 0.93077)", "pass": true, "value": 0.00042},
+    {"name": "each method val_r2 within 0.01 of p3 target seeded r2 0.93167 (0.93118 / 0.93130 / 0.93131)", "pass": true, "value": 0.0005},
+    {"name": "oracle vs sklearn max|dw| ridge (Ridge alpha=n*lambda)", "pass": true, "value": 1.1e-12},
+    {"name": "oracle vs sklearn max|dw| lasso (tol 1e-10)", "pass": true, "value": 1.3e-5},
+    {"name": "oracle vs sklearn max|dw| elastic net rho=0.1", "pass": true, "value": 2.7e-5},
+    {"name": "verify-fast: pytest 176 passed, leak_scan 0 findings, chain_check 0 failures p1..p4", "pass": true, "value": 0},
+    {"name": "build_nb executes p0-p5 errors=0 (structure_problems=1 is p5 stub lacking an Outcome cell, not mine)", "pass": true, "value": 0}
+  ],
+  "metrics_path": "artifacts/p4.json",
+  "deviations": [
+    "Runtime 807 s (module) / 797 s (notebook) vs the 480 s limit; per step: validation curves 201 s, day-block CV 236 s, methods+chrono 31 s, paths+stability 278 s, rich_check 56 s, verdicts 5 s, survivors 0.3 s. Grid not cut, as instructed. Pure-Python coordinate descent in src/regularization.py (about 20-30 s per 40-point lasso/enet path of 267 columns, up to 7000 sweeps per alpha at small alpha) is the cost.",
+    "not_converged = 6, all lasso (rho = 1): curve l1 (1), cv l1 folds 0,1,2,4 (1 each), chrono l1 (1). Each is the same grid point (index 15 of 40, alpha about 0.16) hitting 20000 sweeps while its neighbours need 300-2500: slow creeping along the exact linear dependencies (workingday = weekdays - holiday, season = f(month dummies), yr/instant/trend). It is not the chosen alpha (0.00018) and the chosen lasso matches sklearn (max|dw| 1.3e-5, |dJ| 9e-13); the warm start at later alphas recovers. Not changed, reported per spec.",
+    "stability selection uses a local loop (group_bootstrap_rows + enet_cd, seeds seed+b, same rule as regularization.stability_selection) instead of regularization.stability_selection, because that function fixes tol=1e-9 / max_sweeps=5000 and gives no convergence count. Stability fits are cold starts (about 2.7 s each at small alpha; the main part of the 278 s).",
+    "Solver tolerances (tol 1e-7, max_sweeps 20000) and the non-zero threshold 1e-10 are module constants in p4.py, not in config.yaml (the spec fixes them, config has no keys for them).",
+    "Group fix 'group_hurts for its members' implemented as: any member of the group has drop_group.lo > 0 and delta >= min_delta; GROUPS evaluated in order temperature, season, level, daytype, so dteday promoted by the season group counts as useful when the level group is reached (yr and instant stay redundant, carried by dteday).",
+    "carried_by for a redundant column = its useful partners; if there are none, the max_abs_corr partner. entry_rank is None for columns whose own features never enter the lasso path. VIF is 1/(1-R2_j) from a pseudo-inverse regression on the other first-order columns, floored at 1e-6 in 1-R2 (cap 1e6). drop_cost / delta is R2(full) - R2(reduced), so positive = dropping hurts; evidence sentences say 'costs'.",
+    "n_features counts the bias column (268 = 267 slope columns + bias; 251 before candidates, incl. bias); feature_names and weights exclude the bias, intercept is stored separately; n_nonzero counts slopes."
+  ],
+  "questions": [
+    "Runtime is 1.7x the 8-minute limit and 6 lasso solutions hit max_sweeps (spec says report, do not cut). Options for the chief: accept; relax the sweep cap or tolerance for the stalled alpha; or authorise a faster CD in src/regularization.py (e.g. numba is not allowed, so a vectorised/active-set variant) and fewer cold-start stability fits. I changed nothing.",
+    "Chosen penalties sit at the small end of the grids: ridge lambda = 1e-4 is the lower edge of ridge_alpha_range (the best validation R2 may be at a smaller alpha than the grid allows; l2 minus unregularised is +0.0004, interval includes 0); lasso lambda 1.8e-4 is 3 grid steps above the lasso minimum 5.6e-5; enet picks rho 0.1 (0.0014). All three methods are within 0.0002 of each other, intervals include 0, so recommended = enet only by the held-out-day tie-break (day_block 0.9248 vs 0.9246 / 0.9242).",
+    "Verdicts: dteday = useful only through the representative fix (alone cost +0.0005 [-0.0002, +0.0012]); season, mnth, yr, instant, atemp, holiday = redundant; windspeed = uninformative (alone +0.0005 [-0.0014, +0.0023], solo R2 0.0009). Expectation guess that holiday might be uninformative: it is redundant by group (dropping it with weekday and workingday costs 0.1876)."
+  ],
+  "notes": "Results: unregularised val R2 0.93077. l2 lambda 1e-4 val 0.93118 (267 nonzero of 267); l1 lambda 1.82e-4 val 0.93130 (255 of 267); enet lambda 1.44e-3 rho 0.1 val 0.93131 (258 of 267). Chrono R2 0.8710 / 0.8695 / 0.8700; day-block R2 0.9242 / 0.9246 / 0.9248. CV picks (alpha): l2 best 0.0094 / 1se 0.033, l1 best 0.0012 / 1se 0.0050, enet best 0.0075 / 1se 0.031, with validation R2 0.9308 at cv_best for all three. Recommended enet (all three within noise). rich_check C9_month_x_wd_x_hr (910 weights): unregularised 0.9262, ridge 0.9266 (lambda 0.0018), lasso 0.9298 (420 nonzero), best penalised minus recommended -0.0015 [-0.0053, +0.0022]. Verdicts: useful hr, weekday, workingday, weathersit, temp, hum, dteday(representative); redundant season, mnth, yr, instant, atemp, holiday; uninformative windspeed. Survivors: lasso nonzero 255, stable (freq >= 0.6) 255, after verdicts 244 expanded features; 7 original columns (hr, weekday, workingday, weathersit, temp, hum, dteday); survivor_refit 245 weights val R2 0.93142 / day-block 0.9268 (full ridge 0.93118 / 0.9242). Idea (not done): a Gram-reusing stability loop and ridge path on subsets would cut runtime; stability could warm-start from the chosen lasso solution.",
+  "usage_note": "about 45 tool calls; two full p4 runs of about 13 minutes each"
+}

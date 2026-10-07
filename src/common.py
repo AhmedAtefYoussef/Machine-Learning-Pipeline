@@ -209,3 +209,22 @@ def read_artifact(name: str) -> dict:
     """Load artifacts/<name>.json."""
     with open(_artifact_path(name), "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def cached_or_run(name: str, run_fn, cfg: dict, upstream: str | None = None) -> dict:
+    """Return artifacts/<name>.json if it was built from this exact config and upstream artifact, else run the phase.
+
+    Used by the notebook for the slow phases only. A config edited in memory (the live re-run case) differs
+    from config.yaml on disk, so the phase is recomputed.
+    """
+    path = _artifact_path(name)
+    if os.path.exists(path) and cfg == load_config():
+        art = read_artifact(name)
+        same_config = art.get("config_sha256") == sha256_file(CONFIG_PATH)
+        same_upstream = upstream is None or art.get("upstream_sha256") == sha256_file(_artifact_path(upstream))
+        if same_config and same_upstream:
+            print(f"loaded cached artifacts/{name}.json (same config and upstream artifact); "
+                  f"run `python run.py {name}` or change CFG to recompute")
+            return art
+    return run_fn(cfg)
+

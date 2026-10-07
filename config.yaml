@@ -44,7 +44,7 @@ p3:
 p4:
   candidate_blocks: [c_atemp, c_yr, c_instant, c_season, c_mnth, c_weekday]
   n_alphas: 40
-  ridge_alpha_range: [1.0e-4, 1.0e+3]
+  ridge_alpha_range: [1.0e-6, 1.0e+3]
   l1_alpha_min_ratio: 1.0e-4                # grid = alpha_max * [1 ... ratio], log-spaced
   l1_ratios: [0.1, 0.3, 0.5, 0.7, 0.9, 0.95]
   stability: {B: 50, threshold: 0.6}

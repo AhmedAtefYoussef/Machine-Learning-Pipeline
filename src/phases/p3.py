@@ -226,7 +226,8 @@ def run(cfg: dict | None = None) -> dict:
                    "anchor_index": anchor_index,
                    "feature_names_sha256": hashlib.sha256("\n".join(p2["feature_names"]).encode()).hexdigest(),
                    "p2_val_r2": p2["val_r2"]},
-        "cut_date": ctx.cut_date, "k_folds": ctx.k, "fit_alpha": ctx.alpha, "back_method": ctx.back_method}
+        "cut_date": ctx.cut_date, "k_folds": ctx.k, "fit_alpha": ctx.alpha, "back_method": ctx.back_method,
+        "plateau_tol": float(cfg["p3"]["plateau_tol"])}
     write_artifact("p3", payload, upstream="p2", cfg=cfg)
     return payload
 
