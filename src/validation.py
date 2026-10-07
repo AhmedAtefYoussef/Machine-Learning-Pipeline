@@ -122,7 +122,9 @@ def noise_floor(train_df: pd.DataFrame) -> dict:
     within_ss = float(np.sum((y - cell_means[cell_id]) ** 2))
     total_ss = float(np.sum((y - y.mean()) ** 2))
     n, n_cells = len(y), len(sizes)
+    # every row its own cell: no degrees of freedom are left, the adjusted value is defined as 0
+    adjusted = 0.0 if n == n_cells else 1.0 - (within_ss / (n - n_cells)) / (total_ss / (n - 1))
     return {"noise_floor_r2": 1.0 - within_ss / total_ss,
-            "noise_floor_r2_adjusted": 1.0 - (within_ss / (n - n_cells)) / (total_ss / (n - 1)),
+            "noise_floor_r2_adjusted": adjusted,
             "n_cells": int(n_cells), "singleton_cell_share": float(np.mean(sizes == 1)),
             "singleton_row_share": float(np.sum(sizes == 1) / n)}

@@ -39,8 +39,12 @@ def fit_logistic(X, y, l2=0.0, lr=None, tol_loss=1e-10, tol_grad=1e-6, max_iter=
     """
     if lr is None:
         lr = 1.0 / (lambda_max(X) / 4.0 + l2)
-    loss_fn = lambda w: logloss(X, y, w, l2)
-    grad_fn = lambda w: logloss_grad(X, y, w, l2)
+    def loss_fn(w):
+        return logloss(X, y, w, l2)
+
+    def grad_fn(w):
+        return logloss_grad(X, y, w, l2)
+
     return gradient_descent(loss_fn, grad_fn, np.zeros(X.shape[1]), lr,
                             tol_loss=tol_loss, tol_grad=tol_grad, max_iter=max_iter)
 
@@ -97,7 +101,9 @@ def confusion(y, p, thr):
 def prf(y, p, thr):
     """accuracy, precision, recall, f1 at threshold thr (0 when a denominator is 0)."""
     c = confusion(y, p, thr)
-    safe = lambda a, b: a / b if b > 0 else 0.0
+    def safe(a, b):
+        return a / b if b > 0 else 0.0
+
     precision = safe(c["tp"], c["tp"] + c["fp"])
     recall = safe(c["tp"], c["tp"] + c["fn"])
     return dict(accuracy=safe(c["tp"] + c["tn"], len(y)), precision=precision,

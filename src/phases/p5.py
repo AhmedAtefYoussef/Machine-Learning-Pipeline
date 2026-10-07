@@ -250,7 +250,7 @@ def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[
          "hyperparameters": f"degree={p2['degree']} on {','.join(p2['power_cols'])}, blocks={','.join(p2['blocks'])}",
          "n_features": len(p2["feature_names"]), "train_score": p2["train_r2"], "val_score": p2["val_r2"],
          "val_rmse": p2["val_rmse"], "extra": f"gain over P1 = {p2['gain_over_p1']:.4f} R2"},
-        {"phase": "P3 bias-variance", "consumed": "P2 design as anchor of a 10-level ladder",
+        {"phase": "P3 bias-variance", "consumed": f"P2 design as anchor of a {len(p3['ladder'])}-level ladder",
          "hyperparameters": f"target {p3['target_level']} ({p3['target_complexity']['n_features']} weights)",
          "n_features": p3["target_complexity"]["n_features"], "train_score": est["seeded"]["train_r2"],
          "val_score": est["seeded"]["r2"], "val_rmse": est["seeded"]["rmse"],
@@ -314,8 +314,8 @@ def run(cfg: dict | None = None) -> dict:
         variants = [label_variant(r, p5cfg, train_df, val_df, mats, (X_tr, X_va), l2, unconverged,
                                   p_va if r == list(p5cfg["group_by"]) else None) for r in rules]
 
-    p5_row = {"phase": "P5 logistic", "consumed": "P4 surviving columns, label = above the 75th percentile of "
-              + "+".join(p5cfg["group_by"]), "hyperparameters": f"l2={l2:g}, threshold {t_cost:.2f}, "
+    p5_row = {"phase": "P5 logistic", "consumed": "P4 surviving columns, label = above the "
+              f"{p5cfg['quantile'] * 100:g}th percentile of " + "+".join(p5cfg["group_by"]), "hyperparameters": f"l2={l2:g}, threshold {t_cost:.2f}, "
               f"{result.iterations} iterations", "n_features": X_tr.shape[1], "train_score": train_metrics["roc_auc"],
               "val_score": metrics["roc_auc"], "val_rmse": None,
               "extra": f"accuracy {metrics['accuracy']:.3f}, F1 {metrics['f1']:.3f}, ROC-AUC {metrics['roc_auc']:.3f}"}

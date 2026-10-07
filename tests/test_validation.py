@@ -340,8 +340,6 @@ def test_noise_floor_nearly_all_singletons_is_near_one(train_df):
     assert shares and all(0.0 <= x <= 1.0 for x in shares)
 
 
-@pytest.mark.xfail(strict=True, raises=ZeroDivisionError,
-                   reason="SUSPECTED DEFECT src/validation.py:126 adjusted floor divides by n - n_cells = 0")
 def test_noise_floor_all_singletons_is_one_without_crashing(train_df):
     uniq = train_df.drop_duplicates(subset=CELL).iloc[:200]
     v = _numeric_values(validation.noise_floor(uniq))                   # every row its own cell

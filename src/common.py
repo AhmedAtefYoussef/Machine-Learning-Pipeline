@@ -239,7 +239,11 @@ def write_artifact(name: str, payload: dict, upstream: str | None = None, cfg: d
     cfg = cfg if cfg is not None else load_config()
     body = dict(payload)
     body["seed"] = config_seed(cfg)
-    body["config_sha256"] = sha256_file(CONFIG_PATH)
+    # the hash must describe the config the phase ran with: a drill with an edited CFG is not the file on disk
+    if cfg == load_config():
+        body["config_sha256"] = sha256_file(CONFIG_PATH)
+    else:
+        body["config_sha256"] = hashlib.sha256(json.dumps(cfg, sort_keys=True).encode("utf-8")).hexdigest()
     body["upstream_sha256"] = sha256_file(_artifact_path(upstream)) if upstream else None
     # allow_nan=False makes NaN/inf raise ValueError instead of writing invalid JSON
     text = json.dumps(body, sort_keys=True, indent=1, default=_json_default, allow_nan=False)

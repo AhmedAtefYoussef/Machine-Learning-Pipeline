@@ -146,8 +146,11 @@ fig = plot_stability(p4)
 # The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible: a feature survives if its Lasso weight is non-zero at the chosen penalty ({{p4.survivor_counts.lasso_nonzero}} features), it is selected in at least {{p4.stability_threshold}} of the day-resampled Lasso fits ({{p4.survivor_counts.stable}} remain), and every original column it is built from has the verdict "useful" ({{p4.survivor_counts.after_verdicts}} remain). The third condition is what removes copies that Lasso happened to keep.
 
 # %%
-# Survivors: lasso non-zero, stable over resampled days, and every source column judged useful.
-print("counts:", p4["survivor_counts"])
+# Survivors: Lasso on the design of useful columns only; non-zero at its chosen lambda and stable over resampled days.
+sel = p4["selection"]
+print("counts (useful design -> lasso non-zero -> stable):", p4["survivor_counts"])
+print("selection lasso: lambda =", round(sel["lambda"], 6), "| val R2 =", round(sel["val_r2"], 4),
+      "| non-zero:", sel["n_nonzero"], "of", sel["n_columns"], "| sweeps exhausted:", sel["not_converged"]["count"])
 print("original columns kept:", p4["survivors_original"])
 print("survivor columns (expanded features):", len(p4["survivors_expanded"]))
 

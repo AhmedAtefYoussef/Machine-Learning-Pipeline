@@ -5,6 +5,8 @@ Same semantics as the Makefile, but it runs on Windows (no make) and uses `pytho
 from ARCHITECTURE section 0. A phase rebuilds when its artifact is missing or older than an input.
 """
 import glob
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -84,7 +86,23 @@ def build_phase(n: int) -> int:
 
 
 def existing_artifacts() -> str:
-    return ",".join(os.path.basename(p)[:-5] for p in sorted(glob.glob(os.path.join(ROOT, ART, "p?.json"))))
+    """Names of the existing p1..p5 artifacts (chain_check knows only these; p6 has its own check)."""
+    return ",".join(f"p{n}" for n in range(1, 6) if os.path.exists(os.path.join(ROOT, ART, f"p{n}.json")))
+
+
+def p6_chain() -> bool:
+    """Print and return whether p6.upstream_sha256 equals the sha256 of artifacts/p5.json (True if no p6 yet)."""
+    p6, p5 = (os.path.join(ROOT, ART, f"{n}.json") for n in ("p6", "p5"))
+    if not (os.path.exists(p6) and os.path.exists(p5)):
+        print("p6 chain: no p6 artifact")
+        return True
+    with open(p6, "r", encoding="utf-8") as fh:
+        recorded = json.load(fh).get("upstream_sha256")
+    with open(p5, "rb") as fh:
+        actual = hashlib.sha256(fh.read()).hexdigest()
+    ok = recorded == actual
+    print("p6 chain: upstream ok" if ok else "p6 chain: MISMATCH")
+    return ok
 
 
 def verify_fast() -> int:
@@ -102,6 +120,8 @@ def verify_fast() -> int:
             failed.append("chain_check")
     else:
         print("chain_check: no artifacts yet")
+    if not p6_chain():
+        failed.append("p6 chain")
     tool("req_check", tail=10)
     if failed:
         print("verify-fast FAILED:", ", ".join(failed))

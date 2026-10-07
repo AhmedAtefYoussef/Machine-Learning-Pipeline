@@ -18,20 +18,20 @@ BROWSERS = [
 MAX_PAGES = 6
 CSS = """
 @page { size: A4; margin: 13mm 14mm 13mm 14mm; }
-body { font-family: "Segoe UI", Arial, sans-serif; font-size: 8.6pt; line-height: 1.27; color: #111; }
+body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9.6pt; line-height: 1.3; color: #111; }
 h1 { font-size: 15pt; margin: 0 0 2pt 0; }
-h2 { font-size: 10.8pt; margin: 8pt 0 2pt 0; border-bottom: 0.6pt solid #888; padding-bottom: 1pt; }
+h2 { font-size: 11.6pt; margin: 8pt 0 2pt 0; border-bottom: 0.6pt solid #888; padding-bottom: 1pt; }
 h3 { font-size: 9.2pt; margin: 5pt 0 1pt 0; }
 p { margin: 2.5pt 0; text-align: justify; }
 ul, ol { margin: 2pt 0 2pt 14pt; padding: 0; }
 li { margin: 0.5pt 0; }
-table { border-collapse: collapse; margin: 3pt 0; font-size: 7.6pt; width: 100%; }
+table { border-collapse: collapse; margin: 3pt 0; font-size: 8.3pt; width: 100%; }
 th, td { border: 0.5pt solid #999; padding: 1pt 3pt; text-align: left; vertical-align: top; }
 th { background: #eee; }
 img { max-width: 100%; }
 .figrow { display: flex; gap: 6pt; align-items: flex-start; }
 .figrow > div { flex: 1; }
-.cap { font-size: 7.4pt; color: #333; margin-top: 0; }
+.cap { font-size: 8pt; color: #333; margin-top: 0; }
 code { font-family: Consolas, monospace; font-size: 7.8pt; }
 .eq { text-align: center; font-family: "Cambria Math", Cambria, serif; font-size: 9.2pt; margin: 2pt 0; }
 """
@@ -43,6 +43,7 @@ def count_pages(pdf: pathlib.Path) -> int:
 
 
 def main() -> int:
+    subprocess.run([sys.executable, "-X", "utf8", str(HERE / "make_figs.py")], check=True)  # figures from artifacts
     md = (HERE / "report.md").read_text(encoding="utf-8")
     body = MarkdownIt("commonmark", {"html": True}).enable("table").render(md)
     html = f"<!doctype html><html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{body}</body></html>"

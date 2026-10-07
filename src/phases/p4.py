@@ -516,16 +516,39 @@ def column_verdicts(fits: dict[str, Fit], entry_alpha: dict, stab: dict, ctx: Co
 
 # ----------------------------------------------------------------------------- survivors
 
-def survivors(verdict: dict, fits: dict[str, Fit], stab: dict, ctx: Context) -> dict:
-    """Lasso non-zero AND stable AND every source column judged useful."""
-    names = ctx.split.names
+def useful_split(verdict: dict, ctx: Context) -> Split:
+    """The fitted design restricted to the features whose source columns are all judged useful (no re-standardising)."""
+    columns = [j for j, n in enumerate(ctx.split.names)
+               if all(verdict[c]["verdict"] == "useful" for c in sources(n))]
+    return ctx.split.keep(columns)
+
+
+def selection_lasso(split: Split, ctx: Context) -> tuple[Fit, dict]:
+    """Lasso path on `split` (its own alpha_max grid), alpha with the best validation R2, and the stability
+    selection of its non-zero set at that alpha; returns (fit, the `selection` record)."""
+    own = replace(ctx, split=split, log=SolverLog())
+    curve = build_curve(split, 1.0, own, "selection lasso")
+    i = best_index(curve.alphas, curve_scores(curve))
+    fit = Fit("l1", float(curve.alphas[i]), 1.0, i, float(curve.B[i]), curve.W[i].copy())
+    freq = stability_frequency(split, fit, ctx.train_df["dteday"].to_numpy(), own, "selection stability")
+    record = {"n_columns": len(split.names), "lambda": fit.alpha, "val_r2": curve.rows[i]["val_r2"],
+              "n_nonzero": count_nonzero(fit.w), "alpha_max": float(curve.alphas[0]),
+              "not_converged": {"count": own.log.not_converged, "where": own.log.where},
+              "freq": dict(zip(split.names, freq.tolist()))}
+    return fit, record
+
+
+def survivors(verdict: dict, ctx: Context) -> dict:
+    """Lasso non-zero AND stable, selected on the design of useful columns only (ADR-016)."""
+    split = useful_split(verdict, ctx)
+    fit, selection = selection_lasso(split, ctx)
     threshold = ctx.p4cfg["stability"]["threshold"]
-    nonzero = [n for n, v in zip(names, fits["l1"].w) if abs(v) > NONZERO_TOL]
-    stable = [n for n in nonzero if stab["l1"]["freq"][n] >= threshold]
-    kept = [n for n in stable if all(verdict[c]["verdict"] == "useful" for c in sources(n))]
-    original = [c for c in vd.ORIGINAL if verdict[c]["verdict"] == "useful" and any(c in sources(n) for n in kept)]
-    return {"survivors_expanded": kept, "survivors_original": original,
-            "survivor_counts": {"lasso_nonzero": len(nonzero), "stable": len(stable), "after_verdicts": len(kept)}}
+    nonzero = [n for n, v in zip(split.names, fit.w) if abs(v) > NONZERO_TOL]
+    stable = [n for n in nonzero if selection["freq"][n] >= threshold]
+    original = [c for c in vd.ORIGINAL if verdict[c]["verdict"] == "useful" and any(c in sources(n) for n in stable)]
+    return {"survivors_expanded": stable, "survivors_original": original, "selection": selection,
+            "survivor_counts": {"useful_design": len(split.names), "lasso_nonzero": len(nonzero),
+                                "stable": len(stable)}}
 
 
 # ----------------------------------------------------------------------------- stage B: the surviving columns only
@@ -613,7 +636,7 @@ def run(cfg: dict | None = None) -> dict:
     with timed("column verdicts"):
         verdict = column_verdicts(fits, entry_alpha, stab, ctx)
     with timed("survivors"):
-        surv = survivors(verdict, fits, stab, ctx)
+        surv = survivors(verdict, ctx)
     best_full = max(METHODS, key=lambda m: methods[m]["val_r2"])
     stage_a_not_converged = {"count": ctx.log.not_converged, "where": dict(ctx.log.where)}
     final, recommended, rec_pred = final_stage(ctx, surv["survivors_expanded"], preds[best_full])
