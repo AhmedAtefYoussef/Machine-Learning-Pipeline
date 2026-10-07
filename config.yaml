@@ -1,11 +1,56 @@
-# Copy to config.yaml and fill in. Never guess IDs.
-team_ids: ["16007032", "16009837", "16006283"]   # strings; 2-3 members
+# Team configuration and every re-run knob. The seed is derived from team_ids, never typed.
+team_ids: ["16007032", "16009837", "16006283"]   # strings; registered roster
 paths: {train: data/train.csv, test: data/test.csv, sample_submission: data/sample_submission.csv, description: Project_1_description.md}
-split: {test_size: 0.20}                    # seed is derived from team_ids, never typed here
-chrono: {cut_date: "2012-07-01"}            # Phase 3 chronological split; revisit with a second cut
-threads: 1                                  # OMP/MKL threads per process: parallelize across processes, not inside them
-# Hyperparameters below are filled by the phases and recorded in artifacts; keep this block for the live-defense re-run knobs.
-p1: {lr: null, tol: 1.0e-10, max_iter: 50000}
-p2: {degree: null, expand: []}
-p4: {lambda_grid: [1.0e-4, 1.0e2, 40], l1_ratios: [0.1, 0.3, 0.5, 0.7, 0.9, 0.95]}
-p5: {quantile: 0.75, group_by: [workingday, hr]}
+split: {test_size: 0.20}
+chrono: {cut_date: "2012-07-01"}            # Phase 3 chronological split: train before, validate from this date on
+threads: 1
+day_block_folds: 5                          # date-determined folds inside the training portion (diagnosis only)
+bootstrap: {B: 1000}
+
+p1:
+  lr_fraction_of_bound: 0.5                 # lr = fraction * 2 / lambda_max(X'X/n)
+  tol_loss: 1.0e-10                         # relative loss change
+  tol_grad: 1.0e-6                          # gradient 2-norm
+  max_iter: 50000
+  sweep_fractions: [0.001, 0.01, 0.1, 0.5, 0.9, 1.05]
+  sweep_max_iter: 5000
+  backtransform_candidates: [none, duan, ls]
+  bonus: {k_under: 3.0, max_iter: 20000, tol_loss: 1.0e-10}
+p2:
+  blocks: [wd_x_hr]
+  degree_candidates: [1, 2, 3, 4]
+  power_col_candidates: [[temp], [temp, hum], [temp, hum, windspeed]]
+  plateau_tol: 0.001                        # smallest option within this validation R2 of the best wins
+  lr_fraction_of_bound: 0.5
+  tol_loss: 1.0e-10
+  tol_grad: 1.0e-6
+  max_iter: 50000
+p3:
+  ladder:                                   # nested, cumulative; C3 is replaced by the Phase 2 design at run time
+    - {name: C0_no_hour, add: [], drop_hour: true}
+    - {name: C1_additive, add: []}
+    - {name: C2_wd_x_hr, add: [wd_x_hr]}
+    - {name: C3_phase2, add: [], phase2: true}
+    - {name: C4_hr_x_weather, add: [hr_x_temp, hr_x_hum]}
+    - {name: C5_weekday_x_hr, add: [wk, wk_x_hr]}
+    - {name: C6_fine_weather, add: [wd_x_hr_x_temp, hr_x_ws, wd_x_wx]}
+    - {name: C7_hr_x_time, add: [hr_x_doy, hr_x_trend]}
+    - {name: C8_month_x_hr, add: [mn, mn_x_hr]}
+    - {name: C9_month_x_wd_x_hr, add: [mn_x_wd_x_hr]}
+  degree_axis: [1, 2, 3, 4, 5, 6, 8]
+  learning_fractions: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
+  fit_alpha: 1.0e-8
+p4:
+  candidate_blocks: [c_atemp, c_yr, c_instant, c_season, c_mnth, c_weekday]
+  n_alphas: 40
+  ridge_alpha_range: [1.0e-4, 1.0e+3]
+  l1_alpha_min_ratio: 1.0e-4                # grid = alpha_max * [1 ... ratio], log-spaced
+  l1_ratios: [0.1, 0.3, 0.5, 0.7, 0.9, 0.95]
+  stability: {B: 50, threshold: 0.6}
+  verdict: {min_delta: 0.001, solo_min: 0.01}
+p5:
+  quantile: 0.75
+  group_by: [yr, workingday, hr]
+  l2_candidates: [0.0, 1.0e-4, 1.0e-3, 1.0e-2]
+  cost_ratio_miss_to_false_alarm: 3.0
+  max_iter: 50000
