@@ -17,7 +17,11 @@
 # %% [markdown]
 # ### Justification: what we varied
 #
-# TODO(chief)
+# - **A ladder of nested designs, anchored at Phase 2.** Level C3 is exactly the Phase 2 design, read from `artifacts/p2.json`. Below it we remove what Phase 2 added (C2: no powers; C1: no interactions; C0: no hour at all). Above it we add blocks in order of how plausible we found them: weather effects that depend on the hour (C4), a separate hour profile for each weekday (C5), finer weather interactions (C6), hour-specific season and trend (C7), and finally month × hour and month × day type × hour (C8, C9), where many cells contain only a few training rows. Bias shows as "training and validation both low, both rise when we add a block"; variance shows as "training keeps rising, validation falls".
+# - **The degree alone**, from 1 to 8, with everything else as in Phase 2, because the task asks about the degree; we expected this axis to be flat.
+# - **The amount of training data** (10% to 100% of the training days) for the anchor, the target and the top level: more data cures variance but not bias.
+# - **Three ways of scoring** each design: the seeded validation set; five folds of whole held-out days inside the training portion (folds are fixed by the calendar, not by a random seed); and one chronological split.
+# - **How the sweeps are fitted.** These several hundred fits use the closed-form least-squares solution, which our gradient descent reaches to within 1e-5 in Phases 1 and 2 (the chain cell below checks it again on the anchor); the largest levels would need tens of thousands of iterations each.
 
 # %%
 # Phase 3 runs everything from artifacts/p1.json and artifacts/p2.json; CFG comes from the setup notebook.
@@ -74,7 +78,7 @@ fig = plot_learning_curves(p3)
 # %% [markdown]
 # ### Justification: the chronological cut
 #
-# TODO(chief)
+# We train on every date before {{p3.cut_date}} ({{p3.chrono_detail.anchor.n_early}} rows) and validate on every date from then on ({{p3.chrono_detail.anchor.n_late}} rows, about a quarter of the file). We put the cut there for three reasons: the held-out part is about the same size as our seeded validation set, so the two estimates are comparably precise; it covers half a seasonal cycle (summer to winter) instead of one season; and the training part still contains one full year plus the first half of the second, so the model has seen each month at least once. A later cut would test only autumn and winter; an earlier one would leave too little of 2012 to learn the growth from.
 
 # %%
 # Three estimates for the anchor and the target, their gaps, and the bootstrap interval of the seeded estimate.
@@ -94,7 +98,10 @@ fig = plot_three_estimates(p3)
 # %% [markdown]
 # ### Justification: which estimate to trust
 #
-# TODO(chief)
+# - **The gap has two possible causes, and we measured them separately.** Seeded versus held-out days isolates the effect of sharing days between training and validation: {{p3.gaps.anchor.leakage:.4f}} for the Phase 2 model and {{p3.gaps.target.leakage:.4f}} for the target, both far smaller than the spread between day folds ({{p3.estimates.day_holdout.sd:.3f}}). Held-out days versus chronological isolates what changes when the validation period lies in the future: {{p3.gaps.anchor.drift:.3f}} and {{p3.gaps.target.drift:.3f}}.
+# - **So the gap is drift, not leakage.** In the late period the mean demand is {{p3.chrono_detail.anchor.mean_cnt_late:.0f}} bikes against {{p3.chrono_detail.anchor.mean_cnt_early:.0f}} before the cut, and the Phase 2 model's predictions there are {{p3.chrono_detail.anchor.mean_ratio:.2f}} times the true mean: the straight trend fitted in log space extrapolates growth too steeply. If we only correct that level (a diagnostic, not a usable score) R² returns to {{p3.chrono_detail.anchor.r2_level_corrected:.3f}}, so most of the gap is the level and the hourly shape still fits.
+# - **Which one to trust.** For data from new time periods, the chronological estimate ({{p3.estimates.chrono.r2:.3f}} for Phase 2, {{p3.estimates_target.chrono.r2:.3f}} for the target) is the honest one, and it is the number we would quote to an operator planning next year. The seeded number is the most optimistic of the three. For our hidden test set specifically, which is the 20th of each month inside the two observed years, the held-out-day estimate is the closest match, and it agrees with the seeded one.
+# - **Does it change the diagnosis?** No in kind, yes in degree: see the Outcome.
 
 # %%
 # Chronological detail: the late period has a much higher level of demand (growth) than the early one.
@@ -120,9 +127,27 @@ print("blocks:", target["blocks"])
 # %% [markdown]
 # ### Justification: target complexity
 #
-# TODO(chief)
+# Rule: the simplest ladder level whose seeded validation R² is within {{p3.plateau_tol}} of the best level. It selects {{p3.target_complexity.level}} ({{p3.target_complexity.n_features}} weights). The levels above it score {{p3.ladder.6.seeded.r2:.4f}} and {{p3.ladder.7.seeded.r2:.4f}} against {{p3.ladder.5.seeded.r2:.4f}}, differences more than ten times smaller than the validation interval, while on the chronological split they fall from {{p3.ladder.5.chrono.r2:.3f}} to {{p3.ladder.6.chrono.r2:.3f}} and {{p3.ladder.7.chrono.r2:.3f}}.
+#
+# We have to be open about one thing. Our first version of this rule was "the level with the highest validation R²", and on its first run it picked C7 over C5 on a difference of 0.0005. Letting a difference that small add 140 weights is not a rule we could defend, so we replaced it with the same "smallest within 0.001 of the best" rule we had already fixed for the degree in Phase 2. The rule still looks only at the seeded validation set; the held-out-day and chronological numbers confirm the choice but did not make it. The first run is in the git history.
 
 # %% [markdown]
 # ## Outcome — Phase 3
 #
-# TODO(chief)
+# **Diagnosis: the Phase 2 model is {{p3.diagnosis.label}} (high bias, no measurable variance).**
+# - Its training and validation R² differ by {{p3.diagnosis.anchor_gap_train_val:.4f}}. A model that scores the same on rows it has and has not seen is not over-fit.
+# - Adding the hour × weather and weekday × hour blocks raises validation R² from {{p3.estimates.seeded.r2:.4f}} to {{p3.estimates_target.seeded.r2:.4f}}: a gain of {{p3.diagnosis.gain_target_over_anchor:.3f}} with a paired 95% interval of {{p3.diagnosis.gain_ci_lo:.3f}}–{{p3.diagnosis.gain_ci_hi:.3f}}, confirmed on held-out days (+{{p3.diagnosis.day_block_gain:.3f}}) and on the chronological split (+{{p3.diagnosis.chrono_gain:.3f}}). Something real was missing.
+# - The Phase 2 learning curve is flat: with 10% of the training days validation R² is already {{p3.learning_curves.anchor.0.val_r2:.3f}}, with all of them {{p3.learning_curves.anchor.5.val_r2:.3f}}. More data does not help a model that is too simple.
+# - Variance does exist, but only at the top of the ladder: from level {{p3.diagnosis.overfit_from_level}} on, training R² keeps rising ({{p3.ladder.9.seeded.train_r2:.4f}} at C9) while validation falls ({{p3.ladder.9.seeded.r2:.4f}}), and with 10% of the data the top level collapses completely while the gap closes as data is added.
+#
+# **The time question.** Seeded {{p3.estimates.seeded.r2:.3f}}, held-out days {{p3.estimates.day_holdout.r2:.3f}}, chronological {{p3.estimates.chrono.r2:.3f}} for Phase 2; {{p3.estimates_target.seeded.r2:.3f}} / {{p3.estimates_target.day_holdout.r2:.3f}} / {{p3.estimates_target.chrono.r2:.3f}} for the target. The gap is drift (the future has a higher level of demand than a straight log-trend predicts well), not leakage between hours of the same day. We trust the chronological number for future periods. It does not change the diagnosis, the simpler models are worse on every split, but it does change how far we go: it is the split that punishes the levels above C5, so it supports stopping there.
+#
+# **What surprised us.**
+# - We expected sharing days between training and validation to matter at least a little. It does not ({{p3.gaps.anchor.leakage:.4f}}). The warning in the task statement is right in general, but a linear model with a few hundred weights has no way to recognise an individual day, so it cannot profit from its neighbours.
+# - The chronological split was kinder to the richer target than to Phase 2 (gap {{p3.gaps.target.drift:.3f}} against {{p3.gaps.anchor.drift:.3f}}). We had expected the simpler model to travel better through time. Both overshoot the level by a similar amount; the richer model simply gets the hourly shape more right.
+# - The degree axis moved validation R² by only {{p3.diagnosis.degree_axis_range:.4f}} between degree 2 and 8. Had we varied only the degree we would have concluded "reasonably fit" and missed {{p3.diagnosis.gain_target_over_anchor:.3f}} of R².
+# - Our own first selection rule failed on a near-tie (see the justification above).
+#
+# **Ceiling.** Hours that share year, month, day type, hour and weather situation still differ from each other; that grouping alone would explain at most about {{p3.noise_floor.noise_floor_r2_adjusted:.3f}} of the variance, so we do not expect any model of this family to get far beyond 0.93–0.94.
+#
+# **Handed to Phase 4:** diagnosis "{{p3.diagnosis.label}}", target complexity {{p3.target_complexity.level}} with {{p3.target_complexity.n_features}} weights (degree {{p3.target_complexity.degree}}). Since the model we carry forward is not over-fit, we expect regularization to act as insurance rather than as a cure; Phase 4 tests that, including on the over-fit top level.
