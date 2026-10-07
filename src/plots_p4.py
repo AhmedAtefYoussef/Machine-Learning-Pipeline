@@ -28,23 +28,33 @@ def _method_rows(p4: dict, method: str) -> list[dict]:
     return _enet_rows(p4) if method == "enet" else p4["curves"][method]
 
 
-def plot_validation_curves(p4: dict):
+def _stage_inputs(p4: dict, stage: str) -> tuple[dict, dict, dict, str]:
+    """(methods, curves, unregularised, title) of stage A (full design) or B (surviving columns)."""
+    if stage == "full":
+        return p4["methods"], p4["curves"], p4["unregularised"], "full design"
+    if stage == "final":
+        final = p4["final"]
+        return final["methods"], final["curves"], final["unregularised"], "surviving columns"
+    raise ValueError("stage must be 'full' or 'final'")
+
+
+def plot_validation_curves(p4: dict, stage: str = "full"):
     """Question: how much penalty does each method want, and does any penalty beat the unregularised fit?"""
-    best = p4["methods"]
+    best, curves, unreg, which = _stage_inputs(p4, stage)
     floor = min(m["val_r2"] for m in best.values()) - 0.15
     fig, ax = plt.subplots(figsize=(8, 5))
     for m in ("l2", "l1", "enet"):
-        rows = _method_rows(p4, m)
+        rows = curves["enet"][str(best["enet"]["l1_ratio"])] if m == "enet" else curves[m]
         name = LABELS[m] + (f", rho = {best['enet']['l1_ratio']}" if m == "enet" else "")
         ax.plot([r["alpha"] for r in rows], [max(r["val_r2"], floor) for r in rows], "o-", ms=3,
                 color=COLORS[m], label=name)
         ax.plot(best[m]["lambda"], best[m]["val_r2"], "*", ms=16, color=COLORS[m], mec="k", label=f"{m} chosen")
-    ax.axhline(p4["unregularised"]["val_r2"], color=COLORS["unregularised"], ls="--", label="unregularised")
+    ax.axhline(unreg["val_r2"], color=COLORS["unregularised"], ls="--", label="unregularised")
     ax.set_xscale("log")
     ax.set_ylim(floor, max(m["val_r2"] for m in best.values()) + 0.01)
     ax.set_xlabel("penalty alpha (log scale)")
     ax.set_ylabel("validation R$^2$ on bikes (cnt)")
-    ax.set_title("Validation R$^2$ along each regularisation path")
+    ax.set_title(f"Validation R$^2$ along each regularisation path ({which})")
     ax.legend(loc="lower left", fontsize=8)
     ax.grid(alpha=0.3)
     fig.tight_layout()

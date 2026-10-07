@@ -1,0 +1,28 @@
+{
+  "spec_id": "S-4-02",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/phases/p4.py", "src/plots_p4.py", "nb/p4_regularization.py", "artifacts/p4.json"],
+  "tests": [
+    {"name": "python run.py p4 total seconds", "pass": true, "value": 1004},
+    {"name": "not_converged stage A (6, lasso, same grid point) / stage B (0)", "pass": true, "value": 0},
+    {"name": "oracle vs sklearn stage B max|dw|: ridge 8e-16, lasso 5.4e-6, enet 5.2e-6 (|dJ| < 5e-12)", "pass": true, "value": 5.4e-6},
+    {"name": "stage B rerun identical (methods, curves, cv, grids, recommended compared as JSON)", "pass": true, "value": 1},
+    {"name": "verify-fast: leak_scan 0 findings; chain_check p1..p4 ok", "pass": true, "value": 0},
+    {"name": "build_nb executes p0-p5 errors=0 structure_problems=0", "pass": true, "value": 0}
+  ],
+  "metrics_path": "artifacts/p4.json",
+  "deviations": [
+    "Determinism: the full run (about 17 minutes) was not repeated; I re-ran stage B (and the recommended model) and compared the serialised JSON with the artifact: identical. Stage A is unchanged code that was byte-identical across two runs in S-4-01.",
+    "verify-fast reports 1 chain_check failure: artifacts/p5.json upstream_sha256 does not match the rebuilt p4.json (p5 was built from the old p4; the chief must rebuild p5). p1..p4 have no failures.",
+    "Runtime 1004 s (curves 209, day-block CV 285, methods 41, paths+stability 304, verdicts 6, stage B 30+45+6, rich check 77); slower than S-4-01 (807 s) mainly because the machine was busy, ridge grid change costs nothing. build_nb loaded the cached artifact via cached_or_run.",
+    "not_converged is stored per stage: not_converged (stage A; the 6 lasso points, rich_check not included) and not_converged_final (stage B, 0). Rich check also had 0.",
+    "rich_check is computed after stage B and compared with the stage-B recommended model (paired best-minus-recommended -0.0018 [-0.0053, +0.0019])."
+  ],
+  "questions": [
+    "Full-design ridge lambda is now 4.9e-6 (grid lower edge 1e-6): interior. Ridge on the survivors picks 1.2e-4. Full-design lasso lambda 1.8e-4 and enet 1.4e-3 unchanged.",
+    "All three stage-B methods are within noise (intervals contain 0), so enet (rho 0.5, 239 non-zero) is recommended only by the day-block tie-break (0.92722 vs 0.92721 lasso, 0.9268 ridge)."
+  ],
+  "notes": "Stage B (245 weights incl. bias, 244 survivor features): unregularised val 0.93142, day-block 0.92679, chrono 0.89681. ridge lambda 1.19e-4 val 0.93142 day-block 0.9268 chrono 0.8968 (244 non-zero); lasso lambda 2.92e-4 val 0.93154 day-block 0.92721 chrono 0.8963 (239); enet lambda 5.84e-4 rho 0.5 val 0.93154 day-block 0.92722 chrono 0.8963 (239). Recommended = enet fitted on survivors. Full-design best (ridge) val 0.93143; best_minus_full_design_best +0.00011 [-0.00226, +0.00253]. Survivor columns: hr, weekday, workingday, weathersit, temp, hum, dteday.",
+  "usage_note": "about 20 tool calls for S-4-02"
+}

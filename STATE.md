@@ -1,29 +1,27 @@
 # STATE (chief; resume from here, not from a transcript)
 
 seed 44615 (IDs 16007032, 16009837, 16006283; user to confirm roster, AMBIGUITIES A2) · deadline 18 Oct 2026
-env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>`; agents = general-purpose subagents (model sonnet) reading `.claude/agents/<role>.md`; shared checkout, disjoint paths, chief commits.
+env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>`; agents = general-purpose subagents (sonnet for code/verify, opus for analyst/audit) reading `.claude/agents/<role>.md`; shared checkout, disjoint paths, only the chief commits.
 
 ## Phase status
-| phase | status | evidence |
+| phase | status | key numbers (see artifacts) |
 |---|---|---|
-| −1 bootstrap | done | kit adopted at repo root, commits 4c53765, 5910381 |
-| 0 decisions | done | docs/adr/001–009, docs/DATA_CARD.md, exp/eda0 |
-| wave 0 libs + tests | running | specs S-0-01..04; receipts R-0-02, R-0-03 in |
-| 1 GD | Expectation written; spec S-1-01 ready | nb/p1_gd.py |
-| 2 Polynomial | Expectation written; spec S-1-01 ready | nb/p2_poly.py |
-| 3 Bias-variance | design fixed (config p3 ladder); spec todo | |
-| 4 Regularization | design in notes below; spec todo | |
-| 5 Logistic | spec todo | |
-| 6 Submission, report | todo | |
+| −1/0 | done | kit at root; ADR-001..014; DATA_CARD |
+| wave 0 libs + tests | done | 176 tests pass |
+| 1 GD | gate passed, tag gate-p1, prose done | 474 iters, val R² 0.721 |
+| 2 Polynomial | gate passed, tag gate-p2, prose done | degree 3 (temp), +wd×hr, val R² 0.910 |
+| 3 Bias-variance | gate passed, tag gate-p3, prose done; F1+F2 frozen | under-fit; target C5 (251 w) 0.932 / 0.926 / 0.893 |
+| 4 Regularization | stage A done; stage B (S-4-02) running | three methods ≈ 0.931; 7 useful columns, 244 survivors |
+| 5 Logistic + predict | coder running (S-5-01) | |
+| analyst audit + ceiling | running → reports/analysis/audit.md | |
+| verifier gate p1–p3 | done, 0 failures | reports/verify/gate-p1-p3.json (trace_proposal not yet applied) |
 
-## Design notes not yet in a spec
-- P3: ladder C0..C9 (config), degree axis, learning curves, three validators, noise floor; target = ladder level with max seeded validation R², confirmed on day-block; closed-form fits (ADR-009).
-- P4: design = target level + candidate blocks; select α per method on seeded validation R² (bike scale); report day-block CV-min and 1-SE picks beside it; stability selection B=50 over days; verdict rule: useful = drop-alone ΔR² CI above 0 and ≥ 0.001; redundant = not useful alone but group drop hurts or solo R² ≥ 0.01; else uninformative; in a group where no single drop hurts, the member with the highest solo R² is the kept "useful" representative. Callers must check enet_cd sweeps < max_sweeps (R-0-03 caveat).
-- P5: label = cnt above the train 0.75 quantile of its (yr, workingday, hr) cell; foils: global threshold, (workingday, hr) without year; threshold on probability from the 3:1 cost ratio (0.25) vs 0.5 vs F1-optimal.
-- P6: refit weights on train+val with fixed hyperparameters, transforms stay train-fitted (A13).
-
-## Next action
-Collect R-0-01, R-0-04 → run `python run.py verify-fast` → commit → spawn S-1-01 coder (P1+P2) and, in parallel, the P3 validation-module coder.
+## Open items (in order)
+1. Collect R-4-02, R-5-01, analyst → review numbers → P4/P5/P6 prose (replace every `TODO(chief)` in nb/p4, p5, p6) → commit, tag gate-p4, gate-p5.
+2. `python run.py nb` (renders placeholders into build/nb, executes) → rush_hour.ipynb.
+3. Report: report/report.template.md (placeholders only) + figures script → `python run.py report` → ≤ 6 pages; number_trace check.
+4. docs/WALKTHROUGH.md (scribe), TRACE.csv statuses (verifier final gate, `python run.py verify`), QA tests for validation/phases (small), code-steward pass (fingerprint equal), TOKENS.md, final fresh-context audit.
+5. Disclose in report: choices made on the validation set (back-transform, degree, target level, λ); ADR-013 and ADR-014 rule changes after first runs; eta cap in validation.fit_predict; 6 stalled lasso grid points.
 
 ## Definition of done
-- [ ] D1 seed/split/chrono · [ ] D2 no leak · [ ] D3 P1–P2 own GD verified · [ ] D4 chain assertions · [ ] D5 P3 evidence · [ ] D6 P4 three methods + verdicts · [ ] D7 P5 label/metrics/retrospective · [ ] D8 Expectation/Outcome/justifications · [ ] D9 notebook headless · [ ] D10 report ≤ 6 pages traced · [ ] D11 submission valid · [ ] D12 bonus · [ ] D13 WALKTHROUGH · [x] D14 spec kit (kit-check after wave 0) · [ ] D15 TRACE verified · [ ] D16 ceiling report · [ ] D17 H1–H13 verifier pass · [ ] D18 TOKENS · [ ] D19 final audit
+- [x] D1 seed/split/chrono (verifier) · [x] D2 no leak P1–P3 (verifier; P4–P6 pending) · [x] D3 P1–P2 own GD verified · [ ] D4 chain assertions (p1–p4 pass; p5 pending) · [x] D5 P3 evidence · [ ] D6 P4 · [ ] D7 P5 · [ ] D8 Expectation/Outcome/justifications (P1–P3 done) · [ ] D9 notebook headless · [ ] D10 report · [ ] D11 submission · [x] D12 bonus (in p1.json) · [ ] D13 WALKTHROUGH · [x] D14 spec kit · [ ] D15 TRACE · [ ] D16 ceiling report · [ ] D17 H1–H13 verifier · [ ] D18 TOKENS · [ ] D19 final audit

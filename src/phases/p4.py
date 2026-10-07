@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -105,6 +105,7 @@ class Context:
     split: Split
     log: SolverLog
     design_from: dict
+    columns: list[str] | None = None   # stage B: keep only these columns (by name) of every fitted design
 
 
 TIMINGS: dict[str, float] = {}
@@ -150,20 +151,25 @@ def pick_design(cfg: dict, p2: dict, p3: dict, train_df: pd.DataFrame) -> tuple[
     return spec, design_from
 
 
-def build_split(spec: DesignSpec, fit_df: pd.DataFrame, eval_df: pd.DataFrame) -> Split:
-    """Fit the design on fit_df only, transform both frames, drop the bias column."""
+def build_split(spec: DesignSpec, fit_df: pd.DataFrame, eval_df: pd.DataFrame,
+                columns: list[str] | None = None) -> Split:
+    """Fit the design on fit_df only, transform both frames, drop the bias column.
+
+    `columns` (stage B) then keeps only those columns, by name, without re-standardising."""
     design = Design(spec).fit(fit_df)
     X_fit, X_eval = design.transform(fit_df)[:, 1:], design.transform(eval_df)[:, 1:]
     cnt_fit = fit_df["cnt"].to_numpy(dtype=np.float64)
-    return Split(design.names[1:], X_fit, to_target(cnt_fit), cnt_fit, X_eval,
-                 eval_df["cnt"].to_numpy(dtype=np.float64))
+    split = Split(design.names[1:], X_fit, to_target(cnt_fit), cnt_fit, X_eval,
+                  eval_df["cnt"].to_numpy(dtype=np.float64))
+    return split if columns is None else split.keep([split.names.index(n) for n in columns])
 
 
 def fold_splits(ctx: Context, spec: DesignSpec | None = None) -> list[Split]:
     """Day-block folds inside train_df; each fold gets its own design fitted on that fold's fitting rows."""
+    columns = ctx.columns if spec is None else None
     spec = spec or ctx.spec
     folds = day_block_folds(ctx.train_df, ctx.cfg["day_block_folds"])
-    return [build_split(spec, ctx.train_df[folds != f], ctx.train_df[folds == f])
+    return [build_split(spec, ctx.train_df[folds != f], ctx.train_df[folds == f], columns)
             for f in range(ctx.cfg["day_block_folds"])]
 
 
@@ -303,7 +309,7 @@ def chrono_result(fit: Fit, grid: np.ndarray, chrono: Split, ctx: Context) -> di
 def describe_methods(curves: dict, fits: dict[str, Fit], cv: dict, ctx: Context):
     """methods.{l2,l1,enet} and the validation predictions of each (kept for the paired comparisons)."""
     early_df, late_df = chrono_split(ctx.all_df, ctx.cfg["chrono"]["cut_date"])
-    chrono = build_split(ctx.spec, early_df, late_df)
+    chrono = build_split(ctx.spec, early_df, late_df, ctx.columns)
     y_val = ctx.split.cnt_eval
     methods, preds = {}, {}
     for m, fit in fits.items():
@@ -340,7 +346,8 @@ def comparisons(preds: dict, pred_unreg: np.ndarray, ctx: Context) -> dict:
     return out
 
 
-def recommend(methods: dict, preds: dict, fits: dict[str, Fit], feature_names: list[str], ctx: Context) -> dict:
+def recommend(methods: dict, preds: dict, fits: dict[str, Fit], feature_names: list[str], ctx: Context,
+              fitted_on: str) -> dict:
     """Within noise of the best on validation, then the best on held-out days."""
     best = max(METHODS, key=lambda m: methods[m]["val_r2"])
     within = [m for m in METHODS if m == best or _interval_has_zero(
@@ -350,7 +357,7 @@ def recommend(methods: dict, preds: dict, fits: dict[str, Fit], feature_names: l
     return {"method": pick, "candidates": within, "best_on_validation": best, "lambda": m["lambda"],
             "l1_ratio": m["l1_ratio"], "val_r2": m["val_r2"], "val_rmse": m["val_rmse"],
             "day_block_r2": m["day_block_r2"], "chrono_r2": m["chrono_r2"],
-            "rule": "within-noise on validation, then best on held-out days",
+            "rule": "within-noise on validation, then best on held-out days", "fitted_on": fitted_on,
             "intercept": fit.b, "weights": fit.w.tolist(), "feature_names": feature_names}
 
 
@@ -510,21 +517,59 @@ def column_verdicts(fits: dict[str, Fit], entry_alpha: dict, stab: dict, ctx: Co
 # ----------------------------------------------------------------------------- survivors
 
 def survivors(verdict: dict, fits: dict[str, Fit], stab: dict, ctx: Context) -> dict:
-    """Lasso non-zero AND stable AND every source column judged useful; then a ridge refit on the survivors."""
-    names, lam = ctx.split.names, fits["l2"].alpha
+    """Lasso non-zero AND stable AND every source column judged useful."""
+    names = ctx.split.names
     threshold = ctx.p4cfg["stability"]["threshold"]
     nonzero = [n for n, v in zip(names, fits["l1"].w) if abs(v) > NONZERO_TOL]
     stable = [n for n in nonzero if stab["l1"]["freq"][n] >= threshold]
     kept = [n for n in stable if all(verdict[c]["verdict"] == "useful" for c in sources(n))]
     original = [c for c in vd.ORIGINAL if verdict[c]["verdict"] == "useful" and any(c in sources(n) for n in kept)]
-    columns = [names.index(n) for n in kept]
-    split = ctx.split.keep(columns)
-    scores, _ = score(split, *ridge_closed_form(split.X_fit, split.z_fit, lam), ctx.back_method)
-    fold_r2 = [r2(f.cnt_eval, ridge_predictions(f.keep(columns), lam, ctx.back_method)) for f in fold_splits(ctx)]
     return {"survivors_expanded": kept, "survivors_original": original,
-            "survivor_counts": {"lasso_nonzero": len(nonzero), "stable": len(stable), "after_verdicts": len(kept)},
-            "survivor_refit": {"n_features": len(kept) + 1, "val_r2": scores["r2"], "val_rmse": scores["rmse"],
-                               "day_block_r2": float(np.mean(fold_r2))}}
+            "survivor_counts": {"lasso_nonzero": len(nonzero), "stable": len(stable), "after_verdicts": len(kept)}}
+
+
+# ----------------------------------------------------------------------------- stage B: the surviving columns only
+
+def unregularised_final(ctx: Context) -> tuple[dict, np.ndarray]:
+    """Ridge 1e-8 on the stage-B columns with train / validation / held-out-day / chronological scores."""
+    scores, pred = unregularised_model(ctx)
+    day_block = [r2(f.cnt_eval, ridge_predictions(f, UNREGULARISED_ALPHA, ctx.back_method)) for f in fold_splits(ctx)]
+    early_df, late_df = chrono_split(ctx.all_df, ctx.cfg["chrono"]["cut_date"])
+    chrono = build_split(ctx.spec, early_df, late_df, ctx.columns)
+    b, w = ridge_closed_form(chrono.X_fit, chrono.z_fit, UNREGULARISED_ALPHA)
+    scores.update({"day_block_r2": float(np.mean(day_block)),
+                   "chrono_r2": score(chrono, b, w, ctx.back_method)[0]["r2"]})
+    return scores, pred
+
+
+def final_curves(curves: dict) -> dict:
+    """Per method the (alpha, val_r2, n_nonzero) rows; elastic net per l1_ratio."""
+    def thin(rows):
+        return [{k: r[k] for k in ("alpha", "val_r2", "n_nonzero")} for r in rows]
+    return {"l2": thin(curves["l2"].rows), "l1": thin(curves["l1"].rows),
+            "enet": {str(rho): thin(c.rows) for rho, c in curves["enet"].items()}}
+
+
+def final_stage(ctx_a: Context, kept: list[str], full_best_pred: np.ndarray) -> tuple[dict, dict, np.ndarray]:
+    """Re-run the whole search on the surviving columns; returns (final, recommended, recommended predictions)."""
+    ctx = replace(ctx_a, split=ctx_a.split.keep([ctx_a.split.names.index(n) for n in kept]), log=SolverLog(),
+                  columns=list(kept))
+    with timed("stage B curves"):
+        curves = validation_curves(ctx)
+        fits = choose_fits(curves)
+    with timed("stage B cross-validation"):
+        cv = cross_validation(curves, fits, ctx)
+    with timed("stage B methods"):
+        methods, preds = describe_methods(curves, fits, cv, ctx)
+        unreg, pred_unreg = unregularised_final(ctx)
+        compare = comparisons(preds, pred_unreg, ctx)
+        best = max(METHODS, key=lambda m: methods[m]["val_r2"])
+        compare["best_minus_full_design_best"] = paired(ctx.split.cnt_eval, preds[best], full_best_pred, ctx)
+        recommended = recommend(methods, preds, fits, ctx.split.names, ctx, "survivors")
+    final = {"methods": methods, "unregularised": unreg, "comparisons": compare, "curves": final_curves(curves),
+             "cv": cv, "grids": grid_summary(curves), "n_columns": len(kept),
+             "not_converged": {"count": ctx.log.not_converged, "where": ctx.log.where}}
+    return final, recommended, preds[recommended["method"]]
 
 
 # ----------------------------------------------------------------------------- run
@@ -562,16 +607,18 @@ def run(cfg: dict | None = None) -> dict:
     with timed("methods, comparisons, recommendation"):
         methods, preds = describe_methods(curves, fits, cv, ctx)
         compare = comparisons(preds, pred_unreg, ctx)
-        recommended = recommend(methods, preds, fits, ctx.split.names, ctx)
     with timed("paths and stability"):
         paths, entry_alpha = coefficient_paths(curves, ctx.split.names)
         stab = stability(fits, ctx)
-    with timed("rich check"):
-        rich = rich_check(p2, fits, preds[recommended["method"]], ctx)
     with timed("column verdicts"):
         verdict = column_verdicts(fits, entry_alpha, stab, ctx)
     with timed("survivors"):
         surv = survivors(verdict, fits, stab, ctx)
+    best_full = max(METHODS, key=lambda m: methods[m]["val_r2"])
+    stage_a_not_converged = {"count": ctx.log.not_converged, "where": dict(ctx.log.where)}
+    final, recommended, rec_pred = final_stage(ctx, surv["survivors_expanded"], preds[best_full])
+    with timed("rich check"):
+        rich = rich_check(p2, fits, rec_pred, ctx)
 
     payload = {
         "design_from": ctx.design_from, "design_spec": ctx.spec.to_dict(),
@@ -579,14 +626,17 @@ def run(cfg: dict | None = None) -> dict:
         "back_method": ctx.back_method, "unregularised": unreg,
         "curves": {"l2": curves["l2"].rows, "l1": curves["l1"].rows,
                    "enet": {str(rho): c.rows for rho, c in curves["enet"].items()}},
-        "cv": cv, "methods": methods, "comparisons": compare, "recommended": recommended,
+        "cv": cv, "methods": methods, "comparisons": compare,
+        "full_design_best": {"method": best_full, "val_r2": methods[best_full]["val_r2"]},
+        "final": final, "recommended": recommended,
         "paths": paths, "entry_alpha": entry_alpha, "stability": stab,
         "stability_threshold": ctx.p4cfg["stability"]["threshold"], "verdict_thresholds": ctx.p4cfg["verdict"],
         "rich_check": rich, "column_verdicts": verdict, **surv,
-        "not_converged": {"count": ctx.log.not_converged, "where": ctx.log.where},
+        "not_converged": stage_a_not_converged, "not_converged_final": final["not_converged"],
         "solver": {"tol": SOLVER_TOL, "max_sweeps": MAX_SWEEPS}, "grids": grid_summary(curves)}
     write_artifact("p4", payload, upstream="p3", cfg=cfg)
-    print(f"[p4] total {sum(TIMINGS.values()):.1f} s | not converged: {ctx.log.not_converged} | "
+    print(f"[p4] total {sum(TIMINGS.values()):.1f} s | not converged: stage A {stage_a_not_converged['count']}, "
+          f"stage B {final['not_converged']['count']}, rich check {ctx.log.not_converged - stage_a_not_converged['count']} | "
           f"most sweeps used: {ctx.log.slowest_sweeps}")
     return payload
 

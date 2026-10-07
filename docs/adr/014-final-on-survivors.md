@@ -1,0 +1,7 @@
+# ADR-014 The recommended regression model is fitted on the surviving columns (Phase 4, stage B)
+status: accepted        phase: p4        owner: chief
+context: ADR-010 recommended one of the three methods on the full candidate design. The first Phase 4 run (commit "Phase 4 first run") showed that design is not the one our own verdicts endorse.
+options: keep the recommendation on the full candidate design / refit the three methods on the survivors and recommend among those
+evidence: first run, artifacts/p4.json at that commit. Full candidate design (267 columns): validation R2 0.9312-0.9313 for all three methods, held-out days 0.9242-0.9248, chronological 0.870. The Phase 3 target without the candidates: chronological 0.893. Ridge refit on the 244 survivors: validation 0.9314, held-out days 0.9268. Dropping mnth alone changes validation R2 by -0.0011 [-0.0021, -0.0000], i.e. removing it helps; atemp, yr, instant, season, holiday cost 0.0000-0.0001 when dropped.
+decision: stage A (unchanged) regularises the full candidate design and produces λ per method, verdicts and survivors. Stage B repeats the same search on the surviving columns only and applies the ADR-010 recommendation rule there. The submitted model is the stage-B recommendation.
+consequences: Phase 5 and the final regression model use the same feature subset, so the chain ends coherently; redundant time copies (instant, yr, month dummies) cannot hurt on unseen days. Phase 4 runtime grows to about 15 minutes; the notebook loads the stored artifact when config and upstream are unchanged.

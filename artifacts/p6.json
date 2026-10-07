@@ -1,0 +1,43 @@
+{
+ "a_vs_b_on_test": {
+  "corr": 0.9996664298056267,
+  "max_abs_diff": 33.48289079038136,
+  "mean_abs_diff": 2.819980689519986,
+  "mean_ratio": 0.9979569288210678
+ },
+ "by_year_mean": {
+  "0": 144.9864111498258,
+  "1": 238.8442508710801
+ },
+ "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
+ "daily_total_ratio": {
+  "max": 1.4854918146366571,
+  "min": 0.8308059575367064
+ },
+ "labelled_cnt_mean": 191.57413191254824,
+ "model": {
+  "l1_ratio": 0.5,
+  "lambda": 0.0005836006978791454,
+  "method": "enet"
+ },
+ "model_a_gap_to_p4": 0.0,
+ "n_fit_rows": 10886,
+ "n_test_rows": 574,
+ "pred": {
+  "max": 904.86,
+  "mean": 191.91533101045295,
+  "median": 151.17000000000002,
+  "min": 1.28,
+  "n_below_1": 0,
+  "n_clipped": 0
+ },
+ "profile_ratio": {
+  "cells_outside_0_4_2_5": 0,
+  "max": 1.090772021649914,
+  "min": 0.7463954069982384
+ },
+ "refit_on": "train+validation",
+ "seed": 44615,
+ "train_cnt_mean": 191.60748736793752,
+ "upstream_sha256": "430836b6c3669b826adf3d615d2b2a8cba5ad5f2600d305845348010a8319e1d"
+}

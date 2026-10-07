@@ -21,16 +21,17 @@
 
 # %%
 # Phase 4 loads artifacts/p3.json for the target design, adds the candidate columns and runs everything with our own
-# solvers. This is the slowest phase of the notebook (several minutes), so we state the cost of each step below.
+# solvers. This is the slowest phase of the notebook: a full run takes about 15 minutes, so the cell below loads the
+# stored artifact when the config and the upstream artifact are unchanged (python run.py p4 recomputes it).
 import pandas as pd
 
-from src.common import load_config, read_artifact
+from src.common import cached_or_run, load_config, read_artifact
 from src.phases import p4 as p4mod
 from src.plots_p4 import (plot_cv_vs_validation, plot_paths, plot_stability, plot_validation_curves,
                           plot_verdicts)
 
 CFG = globals().get("CFG") or load_config()
-p4 = p4mod.run(CFG)  # writes artifacts/p4.json
+p4 = cached_or_run("p4", p4mod.run, CFG, upstream="p3")
 
 # %%
 # The chain: target level from Phase 3, candidate columns added, resulting width (n_features counts the bias column).
@@ -73,9 +74,8 @@ table = pd.DataFrame([{"method": m, "val_r2": v["val_r2"], "val_lo": v["val_lo"]
 print(table.round(4).to_string(index=False))
 diffs = pd.DataFrame([{"comparison": k, **v} for k, v in p4["comparisons"].items()])
 print(diffs.round(5).to_string(index=False))
-rec = p4["recommended"]
-print("within noise of the best:", rec["candidates"], "| recommended:", rec["method"],
-      "| lambda:", rec["lambda"], "| l1_ratio:", rec["l1_ratio"])
+best = p4["full_design_best"]
+print("full design (with candidate columns): best on validation:", best["method"], round(best["val_r2"], 5))
 
 # %% [markdown]
 # ### Justification: choice of lambda per method
@@ -103,16 +103,6 @@ fig = plot_paths(p4, "l2")
 # Where does each correlated pair enter the lasso path? (largest alpha with a non-zero weight; None = never)
 for name in ("temp", "atemp", "yr", "instant", "trend", "workingday", "holiday"):
     print(f"{name:12s} enters at alpha = {p4['entry_alpha'][name]}")
-
-# %%
-# Does a penalty rescue the over-fit top of the ladder? (informational)
-rich = p4["rich_check"]
-print(f"level {rich['level']} | weights (with bias): {rich['n_features']} | unregularised val R2: "
-      f"{rich['unregularised_val_r2']:.4f}")
-for m in ("l2", "l1"):
-    print(m, {k: round(v, 5) if isinstance(v, float) else v for k, v in rich[m].items()})
-print("best penalised top level minus recommended model:",
-      {k: round(v, 5) for k, v in rich["paired_best_vs_recommended"].items()})
 
 # %% [markdown]
 # ### Justification: the verdict rule
@@ -148,9 +138,42 @@ fig = plot_stability(p4)
 # Survivors: lasso non-zero, stable over resampled days, and every source column judged useful.
 print("counts:", p4["survivor_counts"])
 print("original columns kept:", p4["survivors_original"])
-print("survivor refit (ridge at its chosen lambda):", {k: round(v, 5) for k, v in p4["survivor_refit"].items()})
-print("full ridge for comparison: val R2", round(p4["methods"]["l2"]["val_r2"], 5),
-      "| day-block R2", round(p4["methods"]["l2"]["day_block_r2"], 5))
+print("survivor columns (expanded features):", len(p4["survivors_expanded"]))
+
+# %% [markdown]
+# ### Justification: final model on the surviving columns
+#
+# TODO(chief)
+
+# %%
+# Stage B: the same search (ridge, lasso, elastic net) on the surviving columns only.
+final = p4["final"]
+print("columns:", final["n_columns"], "| solutions that used all sweeps:", p4["not_converged_final"])
+table = pd.DataFrame([{"method": m, "lambda": v["lambda"], "l1_ratio": v["l1_ratio"], "val_r2": v["val_r2"],
+                       "day_block_r2": v["day_block_r2"], "day_block_se": v["day_block_se"],
+                       "chrono_r2": v["chrono_r2"], "non_zero": v["n_nonzero"]} for m, v in final["methods"].items()])
+print(table.round(5).to_string(index=False))
+print("unregularised on the survivors:", {k: round(v, 5) for k, v in final["unregularised"].items()})
+diffs = pd.DataFrame([{"comparison": k, **v} for k, v in final["comparisons"].items()])
+print(diffs.round(5).to_string(index=False))
+rec = p4["recommended"]
+print("within noise of the best:", rec["candidates"], "| recommended:", rec["method"], "| fitted on:", rec["fitted_on"],
+      "| lambda:", rec["lambda"], "| l1_ratio:", rec["l1_ratio"])
+print("recommended: val R2", round(rec["val_r2"], 5), "| day-block", round(rec["day_block_r2"], 5),
+      "| chrono", round(rec["chrono_r2"], 5))
+
+# %%
+fig = plot_validation_curves(p4, stage="final")
+
+# %%
+# Does a penalty rescue the over-fit top of the ladder? (informational)
+rich = p4["rich_check"]
+print(f"level {rich['level']} | weights (with bias): {rich['n_features']} | unregularised val R2: "
+      f"{rich['unregularised_val_r2']:.4f}")
+for m in ("l2", "l1"):
+    print(m, {k: round(v, 5) if isinstance(v, float) else v for k, v in rich[m].items()})
+print("best penalised top level minus the recommended (surviving-column) model:",
+      {k: round(v, 5) for k, v in rich["paired_best_vs_recommended"].items()})
 
 # %% [markdown]
 # ## Outcome — Phase 4
