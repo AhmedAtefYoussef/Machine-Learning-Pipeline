@@ -1,0 +1,20 @@
+{
+  "spec_id": "S-0-03",
+  "agent": "coder-C",
+  "status": "done",
+  "files_changed": ["src/regularization.py", "src/logistic.py"],
+  "tests": [
+    {"name": "ridge_vs_sklearn_max_dw", "pass": true, "value": 2.8e-14},
+    {"name": "enet_cd_vs_lasso_enet_max_dw_incl_r099_dup", "pass": true, "value": 5.4e-8},
+    {"name": "alpha_max_zero_and_099_nonzero", "pass": true, "value": "0 nonzero at alpha_max; 1 at 0.99*alpha_max (rho=1 and 0.5)"},
+    {"name": "logistic_gradcheck", "pass": true, "value": 7.0e-10},
+    {"name": "logistic_coef_vs_sklearn_max_dw", "pass": true, "value": 9.4e-6},
+    {"name": "roc_auc_pr_auc_vs_sklearn_incl_ties", "pass": true, "value": 1.1e-16},
+    {"name": "enet_cd_8708x400_time_s", "pass": true, "value": 0.05}
+  ],
+  "metrics_path": null,
+  "deviations": [],
+  "questions": [],
+  "notes": "Extra helpers beyond spec: centred_gram, soft_threshold, cd_sweep, enet_cd_gram, group_bootstrap_rows, average_ranks. Caveat: on an ill-conditioned design (cond ~2e4, mixed random columns) with alpha=1e-3 and rho<=0.5, enet_cd needs 6000-9000 sweeps, so the 5000 default max_sweeps stops early (dw 4e-3 vs sklearn); with max_sweeps=200000 dw < 1e-6. Phase 4 callers should check the sweeps count against max_sweeps. Oracle script lives outside the repo.",
+  "usage_note": "approx 12 turns"
+}

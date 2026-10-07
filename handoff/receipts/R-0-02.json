@@ -1,0 +1,20 @@
+{
+  "spec_id": "S-0-02",
+  "agent": "coder-B",
+  "status": "done",
+  "files_changed": ["src/gd.py", "src/gd_asym.py", "src/poly.py"],
+  "tests": [
+    {"name": "gradcheck_mse", "pass": true, "value": 1.57e-9},
+    {"name": "gradcheck_asym", "pass": true, "value": 1.60e-9},
+    {"name": "gd_converged_lr_1_over_lmax", "pass": true, "value": "converged, 18 iters, max|w-lstsq|=3.1e-7"},
+    {"name": "gd_diverged_lr_1.05x_bound", "pass": true, "value": "diverged"},
+    {"name": "gd_max_iter_small_lr", "pass": true, "value": "max_iter"},
+    {"name": "loss_monotone", "pass": true, "value": true},
+    {"name": "fit_asymmetric", "pass": true, "value": "asym_loss 357.6 -> 273.3; under_share 0.49 -> 0.23; converged in 52 iters"}
+  ],
+  "metrics_path": null,
+  "deviations": ["fit_asymmetric can also return stop_reason 'stalled' if backtracking finds no decreasing step (safety; not hit in checks)"],
+  "questions": [],
+  "notes": "Throwaway checks run with PYTHONPATH=. (src/__init__.py not required). gradient_check relative error uses |a-b|/max(|a|+|b|,1e-12).",
+  "usage_note": "approx 6 turns"
+}

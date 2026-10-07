@@ -1,0 +1,31 @@
+{
+  "spec_id": "S-0-01",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/__init__.py", "src/phases/__init__.py", "src/common.py", "src/features.py", "run.py"],
+  "tests": [
+    {"name": "team_seed_example", "pass": true, "value": 41698},
+    {"name": "team_seed_cfg", "pass": true, "value": 44615},
+    {"name": "split_sizes", "pass": true, "value": "8708/2178"},
+    {"name": "base_design_36_cols_mean0_std1", "pass": true, "value": "max|mean|=1.3e-15, std in [1-1e-13, 1+1e-13]"},
+    {"name": "lambda_max_base", "pass": true, "value": 1.9749},
+    {"name": "poly3_wd_x_hr_65_cols_first36_equal_base", "pass": true, "value": 65},
+    {"name": "base_scaler_fit_equals_plain_fit", "pass": true, "value": 0.0},
+    {"name": "all_19_blocks_column_counts", "pass": true, "value": "match section 4 (first-order extras added automatically for wk/mn blocks)"},
+    {"name": "sources_product_and_power", "pass": true, "value": "ok"},
+    {"name": "write_artifact_identical_bytes_and_nan_raises", "pass": true, "value": "ok"},
+    {"name": "run.py kit-check", "pass": true, "value": "15 kit files, frontmatter ok"},
+    {"name": "run.py verify-fast", "pass": true, "value": "runs to the end; leak_scan 0 findings; my modules' tests pass (72 passed in test_features/test_common); overall exit 1 only from tests/test_gd_asym.py::test_gradient_check[3.0], another agent's file"}
+  ],
+  "metrics_path": null,
+  "deviations": [
+    "BASE is a list (not tuple) because qa tests do list + BASE; DesignSpec coerces base/power_cols/blocks to tuples so base=BASE works.",
+    "run.py treats pytest exit 5 (no tests collected) as non-failing.",
+    "Design.constant_columns lists any column whose train std was 0 (first-order or derived), not only derived."
+  ],
+  "questions": [
+    "tests/test_gd_asym.py::test_gradient_check[3.0] fails in verify-fast (not my code); owner of gd_asym/qa to look."
+  ],
+  "notes": "Column-name factor order: workingday*hr_h, hr_h*temp, wk_d*hr_h, mn_m*workingday*hr_h, hr_h*ws_2. Idea: add gd.py to the p2 rebuild dependency list in run.py (Makefile omits it).",
+  "usage_note": "about 15 turns"
+}
