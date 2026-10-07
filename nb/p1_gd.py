@@ -24,7 +24,7 @@
 # - **Scaling.** Every column is standardised with the training mean and standard deviation only.
 
 # %%
-p1 = p1mod.run(CFG)   # fits Phase 1 from scratch and writes artifacts/p1.json
+p1 = phase("p1", p1mod.run)   # loads artifacts/p1.json, or fits Phase 1 from scratch
 print("training rows        :", p1["n_train"], "| validation rows:", p1["n_val"])
 print("columns (with bias)  :", p1["n_features"])
 print("target               :", p1["target_transform"])
@@ -33,6 +33,23 @@ print("lambda_max of X'X/n  :", round(p1["lambda_max"], 4))
 print("stability bound 2/lambda_max:", round(p1["lr_bound"], 4))
 print("learning rate used   :", round(p1["lr"], 4), "=", p1["lr_fraction"], "x bound")
 print("condition number     :", round(p1["condition_number"], 1))
+
+# %% [markdown]
+# **Live check on this machine.** The cell above may have loaded the stored Phase 1 artifact. The next cell runs our
+# gradient descent again, here and now, from zero weights with the same settings, and compares the result with the
+# stored weight vector. Different machines add floating-point numbers in slightly different order, so we expect
+# agreement to many decimal places rather than bit for bit.
+
+# %%
+live_split = p1mod.make_split(CFG)
+_, live_X, _ = p1mod.base_design(live_split)
+_, _, live_lr = p1mod.learning_rate(live_X, CFG["p1"]["lr_fraction_of_bound"])
+live = p1mod.run_gd(live_X, live_split.z_tr, np.zeros(live_X.shape[1]), live_lr, CFG["p1"]["tol_loss"],
+                    CFG["p1"]["tol_grad"], CFG["p1"]["max_iter"])
+print("live run :", live.stop_reason, "after", live.iterations, "iterations at lr", round(live_lr, 4))
+print("stored   :", p1["stop_reason"], "after", p1["iterations"], "iterations at lr", round(p1["lr"], 4))
+print("largest difference between live and stored weights:", float(np.abs(live.weights - np.array(p1["weights"])).max()))
+assert np.allclose(live.weights, p1["weights"], atol=1e-8), "the live Phase 1 run does not reproduce the stored weights"
 
 # %%
 # Our gradient descent, exactly as it runs above (src/gd.py): the loss, its gradient, and the loop.

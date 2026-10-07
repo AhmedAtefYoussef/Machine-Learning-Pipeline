@@ -18,7 +18,7 @@
 # The expanded design keeps the 35 Phase 1 columns in the same positions and with the Phase 1 scaler (read from `artifacts/p1.json`, not refitted). Each new column gets its own training mean and standard deviation. The longer weight vector is the Phase 1 vector with zeros in the new positions. A zero weight switches a column off, so the expanded model starts as exactly the Phase 1 model: its first loss must equal Phase 1's last loss. The cell below checks this to 1e-9. Starting there instead of at random also means gradient descent only has to learn the correction that the new columns allow.
 
 # %%
-p2 = p2mod.run(CFG)   # reads artifacts/p1.json, fits Phase 2 and writes artifacts/p2.json
+p2 = phase("p2", p2mod.run, upstream="p1")   # loads artifacts/p2.json, or fits Phase 2
 difference = p2["init_loss"] - p1["train_loss_final"]
 print("Phase 1 final training loss :", repr(p1["train_loss_final"]))
 print("Phase 2 initial loss        :", repr(p2["init_loss"]))

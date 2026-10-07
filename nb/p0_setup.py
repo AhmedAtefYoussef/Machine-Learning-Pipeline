@@ -4,19 +4,110 @@
 # This notebook runs the whole project from top to bottom. Every number comes from our own modules in `src/` and from the
 # JSON files in `artifacts/`; the cells only call them and show the results.
 #
-# **Runtime.** Phases 1 to 3 run live in well under a minute (single thread). Phase 4 takes about 20 minutes and
-# Phase 5 about 3, so their cells load the stored artifact when the configuration and the upstream artifact are
-# unchanged, and say so; with those two loaded the whole notebook runs in about a minute.
+# **Running it on Google Colab (or any fresh machine).** Upload this notebook and the two data files of the course,
+# `train.csv` and `test.csv`, then choose *Runtime → Run all*. Nothing else is needed: the setup cell below carries our
+# own project files (the modules in `src/`, `config.yaml`, the stored `artifacts/` and the empty submission template)
+# as text and unpacks them next to the notebook. It downloads nothing and never overwrites a file that already exists.
+# If the two data files have not been uploaded yet, the setup cell asks for them. On our own machines, where the project
+# folder is already there, the setup cell unpacks nothing.
 #
-# **What the notebook needs.** The cells call our own modules in `src/` (the algorithms are printed below where they
-# are used), `config.yaml`, the three CSV files in `data/` and the stored `artifacts/`. Run it from the project folder.
+# **Runtime.** About a minute. Each phase cell loads the artifact that our own run stored when the configuration and
+# the upstream artifact are unchanged, and says so; Phase 4 alone takes about 20 minutes to compute and Phase 5 about 3.
+# One cell in Phase 1 re-runs our gradient descent live on this machine and compares the weights with the stored ones.
+# To recompute the whole chain from scratch set `RECOMPUTE_ALL = True` in the configuration cell (about half an hour).
+# Numbers recomputed on another machine can differ from the text in the last digits, because the markdown cells quote
+# the stored run.
 #
-# **How to change a setting.** Every knob lives in `config.yaml`. To try a different value, edit the `CFG` dictionary in the
-# next cell (for example `CFG["p1"]["lr_fraction_of_bound"] = 0.9`) and re-run the later cells; the phase cells pass `CFG`
-# to the phase code. Changing a knob of Phase 1 or 2 also changes everything downstream, so the Phase 4 and 5 cells
-# will then recompute (about 20 minutes) and overwrite the stored artifacts and the submission file;
-# `git checkout -- artifacts sample_submission.csv` restores the submitted versions. For a quick demonstration that does
-# not touch the chain, call the functions directly in a scratch cell (examples are in `docs/WALKTHROUGH.md`).
+# **Where the code is.** The cells call our modules in `src/`; the core algorithms are printed where they are used
+# (`show_source`), and once the setup cell has run every file can be opened from the file browser.
+#
+# **How to change a setting.** Every knob lives in `config.yaml`. To try a different value, edit the `CFG` dictionary in
+# the configuration cell (for example `CFG["p1"]["lr_fraction_of_bound"] = 0.9`) and re-run the later cells; the phase
+# cells pass `CFG` to the phase code. A phase whose configuration changed is recomputed, and so is everything after it,
+# so a change in Phase 1 or 2 costs the 20 minutes of Phase 4 and overwrites the stored artifacts and the submission
+# file (`git checkout -- artifacts sample_submission.csv` restores them in our repository; on Colab, restart and run the
+# setup cell again in a clean session). For a quick demonstration that does not touch the chain, call the functions
+# directly in a scratch cell (examples are in `docs/WALKTHROUGH.md`).
+
+# %%
+# SETUP: run this cell first. It unpacks our project files, stored below as text, and makes sure the two data files are
+# in place. The long block of letters is a compressed copy of src/, config.yaml and artifacts/, nothing else.
+import base64
+import hashlib
+import io
+import os
+import shutil
+import zipfile
+
+BUNDLE = """
+@@PROJECT_BUNDLE@@
+"""
+DATA_SHA256 = {"train": "@@SHA_TRAIN@@", "test": "@@SHA_TEST@@"}   # the data files our stored results were computed from
+
+with zipfile.ZipFile(io.BytesIO(base64.b64decode(BUNDLE))) as bundle:
+    members = bundle.namelist()
+    missing_members = [m for m in members if not os.path.exists(m)]
+    for member in missing_members:
+        bundle.extract(member, ".")
+print(f"project files: {len(members)} in the bundle, {len(missing_members)} unpacked now, "
+      f"{len(members) - len(missing_members)} already present")
+del BUNDLE
+
+import yaml
+
+DATA_PATHS = {key: yaml.safe_load(open("config.yaml", encoding="utf-8"))["paths"][key] for key in DATA_SHA256}
+
+
+def find_data_file(target):
+    """An uploaded copy of a data file: next to the notebook, or in Colab's upload folder."""
+    for folder in (".", "/content"):
+        candidate = os.path.join(folder, os.path.basename(target))
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def place_data_files():
+    """Copy uploaded data files to the paths config.yaml expects; return the ones still missing."""
+    still_missing = []
+    for target in DATA_PATHS.values():
+        if not os.path.isfile(target):
+            found = find_data_file(target)
+            if found is None:
+                still_missing.append(target)
+            else:
+                os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+                shutil.copy(found, target)
+    return still_missing
+
+
+needed = place_data_files()
+if needed:
+    names = [os.path.basename(target) for target in needed]
+    try:
+        from google.colab import files as colab_files
+    except ImportError:
+        raise FileNotFoundError(f"put {names} next to this notebook (or in data/) and run this cell again") from None
+    print("please choose these files in the upload box:", names)
+    for name, content in colab_files.upload().items():
+        for target in needed:   # Colab may rename a second upload to 'train (1).csv', so match on the stem
+            if name.startswith(os.path.splitext(os.path.basename(target))[0]):
+                os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+                with open(target, "wb") as handle:
+                    handle.write(content)
+    needed = place_data_files()
+    if needed:
+        raise FileNotFoundError(f"still missing: {needed}; upload them and run this cell again")
+
+DATA_MATCHES = True
+for key, target in DATA_PATHS.items():
+    with open(target, "rb") as handle:
+        digest = hashlib.sha256(handle.read().replace(b"\r\n", b"\n")).hexdigest()
+    same = digest == DATA_SHA256[key]
+    DATA_MATCHES = DATA_MATCHES and same
+    print(f"{target}: {'the file our stored results were computed from' if same else 'DIFFERENT from the file our stored results were computed from'}")
+if not DATA_MATCHES:
+    print("The stored artifacts do not belong to these data files: set RECOMPUTE_ALL = True in the configuration cell.")
 
 # %%
 import os
@@ -28,11 +119,20 @@ import numpy as np
 import pandas as pd
 
 from src import plots
-from src.common import config_seed, load_config, load_train, seeded_split, team_seed
+from src.common import cached_or_run, config_seed, load_config, load_train, seeded_split, team_seed
 import src.phases.p1 as p1mod
 import src.phases.p2 as p2mod
 
 CFG = load_config()
+
+RECOMPUTE_ALL = False   # True: recompute every phase from scratch (about half an hour) instead of loading artifacts
+
+
+def phase(name, run_fn, upstream=None):
+    """Load the stored artifact of a phase if it was built from this configuration, otherwise run the phase."""
+    if RECOMPUTE_ALL:
+        return run_fn(CFG)
+    return cached_or_run(name, run_fn, CFG, upstream=upstream)
 SEED = config_seed(CFG)
 assert team_seed(["34521", "40218", "41190"]) == 41698   # the worked example of the brief
 print("team ids  :", CFG["team_ids"])

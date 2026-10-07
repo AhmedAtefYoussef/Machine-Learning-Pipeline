@@ -17,7 +17,7 @@ the numeric artifact of the phase before it.
 
 | File | What it is |
 |---|---|
-| [rush_hour.ipynb](rush_hour.ipynb) | The executed notebook: all five phases, each opening with an **Expectation** cell and closing with an **Outcome** cell |
+| [rush_hour.ipynb](rush_hour.ipynb) | The executed notebook: all five phases, each opening with an **Expectation** cell and closing with an **Outcome** cell. It is self-contained: its setup cell carries `src/`, `config.yaml` and the stored artifacts, so on Google Colab only the notebook, `train.csv` and `test.csv` need to be uploaded |
 | [report.pdf](report.pdf) | The report (5 pages), every number read from the artifact files |
 | [sample_submission.csv](sample_submission.csv) | Predictions for `data/test.csv` (574 rows, same order) |
 | [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) | Rehearsal guide for the live evaluation: formulas, change-and-re-run drills, likely questions |
@@ -61,9 +61,11 @@ Everything runs through `run.py` from the repository root (it replaces the kit's
 | `python run.py verify-fast` | lint, tests, leak scan, chain check, traceability counts | seconds |
 | `python run.py verify` | all of the above plus notebook run, submission check, report number trace | about 2 min |
 
-The notebook imports the modules in `src/`, so open it from the repository root with `src/`, `config.yaml`,
-`data/` and `artifacts/` in place. The Phase 4 and Phase 5 cells load the stored artifact when the configuration and
-the upstream artifact are unchanged, and recompute otherwise.
+The notebook imports the modules in `src/`. Inside the repository it uses the files that are there; anywhere else
+(for example Google Colab) its setup cell unpacks its own copy of `src/`, `config.yaml` and `artifacts/` and asks for
+`train.csv` and `test.csv` if they are not next to it. Every phase cell loads the stored artifact when the configuration
+and the upstream artifact are unchanged; set `RECOMPUTE_ALL = True` in the configuration cell to recompute the chain.
+`python -X utf8 tools/standalone_check.py` re-runs the notebook in an empty folder with only the two data files.
 
 ### Team seed
 
