@@ -1,0 +1,30 @@
+{
+  "spec_id": "S-3-01",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/validation.py", "src/phases/p3.py", "src/plots_p3.py", "nb/p3_bias_variance.py", "artifacts/p3.json"],
+  "tests": [
+    {"name": "standin_validator_seeded_r2 (ls back-transform; band 0.911 +- 0.01)", "pass": true, "value": 0.9111},
+    {"name": "standin_validator_day_block_r2 (band 0.911 +- 0.01)", "pass": true, "value": 0.9109},
+    {"name": "standin_validator_chrono_r2 (band 0.858 +- 0.02)", "pass": true, "value": 0.8581},
+    {"name": "anchor_check closed form minus p2 gradient descent val_r2 (tol 2e-3)", "pass": true, "value": -7.15e-08},
+    {"name": "run p3 twice byte-identical (sha256 96947ffc...)", "pass": true, "value": 1},
+    {"name": "runtime seconds (< 240)", "pass": true, "value": 11},
+    {"name": "verify-fast: leak_scan 0 findings, chain_check 0 failures, pytest 176 passed", "pass": true, "value": 0},
+    {"name": "build_nb execute p0-p5 errors=0", "pass": true, "value": 0}
+  ],
+  "metrics_path": "artifacts/p3.json",
+  "deviations": [
+    "fit_predict caps eta on the evaluation rows at max(z_fit)+1 (ETA_HEADROOM) so exp() cannot overflow; needed because the 900-weight design fitted on 10% of the days predicts absurd values (R2 was -inf). It never binds on the normal fits.",
+    "noise_floor also returns a degrees-of-freedom adjusted value (0.935 vs raw 0.955) and a singleton row share; 30% of the 2636 cells hold one row.",
+    "Plots clip R2 at -0.2 (learning curve of the top design on 10% of days is about -19.7)."
+  ],
+  "questions": [
+    "Stand-in with back-transform 'duan' gives chrono 0.798 and seeded 0.905 (vs 0.858/0.911 for none/ls). p1 chose ls so p3 uses ls; chief may want to know duan is fragile under the chronological split.",
+    "Real run: target = C7_hr_x_time (seeded 0.9322) edges C6_fine_weather (about 0.9322) by under 1e-4; the argmax rule is a near tie. Chronological R2 of the target equals the anchor's within 0.001 (chrono_gain 0.0007) although day-block gain is 0.018, and the chrono-best level is C5 (0.893); the Expectation guessed the target in 250-450 weights (ok: 393) and the chronological split preferring a simpler model (it does).",
+    "tools/build_nb.py: with nbclient installed, execution fails (AttributeError: 'list' has no attribute 'strip') because the cell source is a list; I ran it through the built-in executor by shadowing nbclient with a stub on PYTHONPATH (scratchpad only). Tool is frozen, not touched.",
+    "Spec point 3 / feature counts: n_features and anchor n_features include the bias column (Phase 2 has 61 columns with bias)."
+  ],
+  "notes": "Real run done. Anchor C3_phase2 61 weights seeded 0.9105 / day-block 0.9093 / chrono 0.8577; target C7_hr_x_time 393 weights seeded 0.9322 / day-block 0.9271 / chrono 0.8584 (note chrono level bias: late mean cnt 262 vs early 168, mean_ratio 1.11). Diagnosis label under-fit; gain 0.0218 CI [0.0152, 0.0289]; overfit_from_level 8; degree axis range 0.0026; anchor gap 0.0016. Leakage gap anchor 0.0012, drift gap 0.0516. p3.json 11 s.",
+  "usage_note": "about 35 tool calls"
+}

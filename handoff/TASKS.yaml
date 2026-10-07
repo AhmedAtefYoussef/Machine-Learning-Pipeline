@@ -1,30 +1,14 @@
-# Single task board (chief-owned). Agents write their own ledgers in handoff/ledger/<agent>.jsonl; chief folds them in here.
-# status: todo | running | review | done | blocked      wave: tasks with equal wave and no unmet deps run concurrently
-# paths_owned: the only paths this task may write. Two concurrent tasks must never share a path.
-- id: T-000-01
-  title: common.py, split, metrics, gradient checker, artifact writer
-  agent: coder
-  wave: 0
-  deps: []
-  paths_owned: [src/common.py, tests/test_common.py]
-  spec: handoff/specs/S-0-01.md
-  budget: {max_turns: 40, effort: medium, token_note: "<=60k"}
-  status: todo
-- id: T-000-02
-  title: oracle + gradient-check tests written from SPEC, without reading implementation
-  agent: qa-engineer
-  wave: 0
-  deps: []
-  paths_owned: [tests/test_oracles.py, tests/test_gradcheck.py]
-  spec: handoff/specs/S-0-02.md
-  budget: {max_turns: 30, effort: high, token_note: "<=50k"}
-  status: todo
-- id: T-000-03
-  title: pre-mortem of the design (failure modes, leakage paths, validation optimism)
-  agent: analyst
-  wave: 0
-  deps: []
-  paths_owned: [reports/analysis/premortem.md]
-  spec: handoff/specs/S-0-03.md
-  budget: {max_turns: 25, effort: high, token_note: "<=60k"}
-  status: todo
+# Task board (chief-owned). status: todo | running | review | done | blocked
+- {id: T-000-01, spec: handoff/specs/S-0-01.md, agent: coder-A, wave: 0, paths_owned: [src/common.py, src/features.py, run.py], status: done, receipt: handoff/receipts/R-0-01.json}
+- {id: T-000-02, spec: handoff/specs/S-0-02.md, agent: coder-B, wave: 0, paths_owned: [src/gd.py, src/gd_asym.py, src/poly.py], status: done, receipt: handoff/receipts/R-0-02.json}
+- {id: T-000-03, spec: handoff/specs/S-0-03.md, agent: coder-C, wave: 0, paths_owned: [src/regularization.py, src/logistic.py], status: done, receipt: handoff/receipts/R-0-03.json}
+- {id: T-000-04, spec: handoff/specs/S-0-04.md, agent: qa-engineer, wave: 0, paths_owned: [tests/], status: done, receipt: handoff/receipts/R-0-04.json}
+- {id: T-100-01, spec: handoff/specs/S-1-01.md, agent: coder, wave: 1, deps: [T-000-01, T-000-02], paths_owned: [src/phases/p1.py, src/phases/p2.py, src/plots.py, nb/p0_setup.py, nb/p1_gd.py, nb/p2_poly.py], status: running}
+- {id: T-300-01, spec: handoff/specs/S-3-01.md, agent: coder, wave: 1, deps: [T-000-01], paths_owned: [src/validation.py, src/phases/p3.py, src/plots_p3.py, nb/p3_bias_variance.py], status: running}
+- {id: T-400-01, spec: handoff/specs/S-4-01.md, agent: coder, wave: 2, deps: [T-300-01, T-000-03], paths_owned: [src/phases/p4.py, src/verdicts.py, src/plots_p4.py, nb/p4_regularization.py], status: todo}
+- {id: T-500-01, spec: handoff/specs/S-5-01.md, agent: coder, wave: 3, deps: [T-400-01], paths_owned: [src/phases/p5.py, src/labels.py, src/predict.py, src/plots_p5.py, nb/p5_logistic.py, nb/p6_submission.py], status: todo}
+- {id: T-600-01, title: verifier gate checks p1-p5 + final, agent: verifier, wave: 4, status: todo}
+- {id: T-600-02, title: analyst post-run audit + ceiling report, agent: analyst, wave: 4, status: todo}
+- {id: T-600-03, title: report template, WALKTHROUGH, PDF, agent: chief+scribe, wave: 4, status: todo}
+- {id: T-600-04, title: code-steward pass (fingerprint must not move), agent: code-steward, wave: 5, status: todo}
+- {id: T-700-01, title: final fresh-context audit, agent: auditor (opus), wave: 6, status: todo}
