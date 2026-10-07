@@ -45,7 +45,7 @@ def fig_ladder(p3: dict) -> None:
         idx = p3["anchor"]["anchor_index"] if key == "anchor" else p3["target_complexity"]["index"]
         n = p3["ladder"][idx]["n_features"]
         ax.axvline(n, color=COLORS["grey"], lw=0.6, ls=":")
-        ax.text(n, 0.705, text, rotation=90, va="bottom", ha="right", fontsize=6, color=COLORS["grey"])
+        ax.text(n, 0.958, text, rotation=90, va="top", ha="right", fontsize=6, color=COLORS["grey"])
     ax.set_xscale("log"); ax.set_ylim(0.70, 0.96)
     ax.set_xlabel("number of weights (log scale)"); ax.set_ylabel("R² on bikes")
     ax.legend(fontsize=6, frameon=False, loc="lower center")
@@ -65,7 +65,7 @@ def fig_verdicts(p4: dict) -> None:
         ax.barh(i - 0.2, max(n["drop_alone"]["delta"], 1e-5), height=0.38, color=COLORS["val"],
                 label="alone" if i == 0 else None)
     ax.set_yticks(range(len(cols)))
-    ax.set_yticklabels([f"{c} ({p4['column_verdicts'][c]['verdict'][:5]}.)" for c in cols], fontsize=6)
+    ax.set_yticklabels([f"{c}: {p4['column_verdicts'][c]['verdict']}" for c in cols], fontsize=6)
     ax.set_xscale("log"); ax.set_xlim(1e-5, 1)
     ax.axvline(p4["verdict_thresholds"]["min_delta"], color=COLORS["grey"], lw=0.6, ls=":")
     ax.set_xlabel("validation R² lost when dropped (log scale)")
@@ -84,7 +84,7 @@ def fig_threshold(p5: dict) -> None:
     ax.plot(x, [r["cost"] for r in curve], lw=1.1, color=COLORS["chrono"], ls="--", label="cost per hour (3 x miss + false alarm)")
     ax.axvline(p5["t_cost"], color=COLORS["grey"], lw=0.6, ls=":"); ax.axvline(0.5, color=COLORS["grey"], lw=0.6, ls=":")
     ax.set_xlabel("probability cut-off"); ax.set_ylabel("value on validation rows"); ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=6, frameon=False, loc="upper center")
+    ax.legend(fontsize=6, frameon=False, loc="upper right")
     fig.tight_layout(); fig.savefig(FIGS / "threshold.png", dpi=200); plt.close(fig)
 
 

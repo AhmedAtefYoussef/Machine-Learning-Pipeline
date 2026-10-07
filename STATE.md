@@ -1,27 +1,28 @@
 # STATE (chief; resume from here, not from a transcript)
 
-seed 44615 (IDs 16007032, 16009837, 16006283; user to confirm roster, AMBIGUITIES A2) · deadline 18 Oct 2026
-env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>`; agents = general-purpose subagents (sonnet for code/verify, opus for analyst/audit) reading `.claude/agents/<role>.md`; shared checkout, disjoint paths, only the chief commits.
+seed 44615 (IDs 16007032, 16009837, 16006283; **user must confirm these are the registered roster**, AMBIGUITIES A2) · deadline 18 Oct 2026
+env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>` (all | p1..p5 | submission | nb | report | verify-fast | verify | fingerprint). Phase 4 ≈ 20 min; the notebook loads the stored p4/p5 artifacts when config and upstream are unchanged.
 
-## Phase status
-| phase | status | key numbers (see artifacts) |
-|---|---|---|
-| −1/0 | done | kit at root; ADR-001..014; DATA_CARD |
-| wave 0 libs + tests | done | 176 tests pass |
-| 1 GD | gate passed, tag gate-p1, prose done | 474 iters, val R² 0.721 |
-| 2 Polynomial | gate passed, tag gate-p2, prose done | degree 3 (temp), +wd×hr, val R² 0.910 |
-| 3 Bias-variance | gate passed, tag gate-p3, prose done; F1+F2 frozen | under-fit; target C5 (251 w) 0.932 / 0.926 / 0.893 |
-| 4 Regularization | stage A done; stage B (S-4-02) running | three methods ≈ 0.931; 7 useful columns, 244 survivors |
-| 5 Logistic + predict | coder running (S-5-01) | |
-| analyst audit + ceiling | running → reports/analysis/audit.md | |
-| verifier gate p1–p3 | done, 0 failures | reports/verify/gate-p1-p3.json (trace_proposal not yet applied) |
+## Deliverables (repo root)
+`rush_hour.ipynb` (106 cells, executed, 23 figures, 0 errors) · `report/report.pdf` (5 pages; source report/report.template.md, numbers traced) · `sample_submission.csv` (574 rows) · `docs/WALKTHROUGH.md`
 
-## Open items (in order)
-1. Collect R-4-02, R-5-01, analyst → review numbers → P4/P5/P6 prose (replace every `TODO(chief)` in nb/p4, p5, p6) → commit, tag gate-p4, gate-p5.
-2. `python run.py nb` (renders placeholders into build/nb, executes) → rush_hour.ipynb.
-3. Report: report/report.template.md (placeholders only) + figures script → `python run.py report` → ≤ 6 pages; number_trace check.
-4. docs/WALKTHROUGH.md (scribe), TRACE.csv statuses (verifier final gate, `python run.py verify`), QA tests for validation/phases (small), code-steward pass (fingerprint equal), TOKENS.md, final fresh-context audit.
-5. Disclose in report: choices made on the validation set (back-transform, degree, target level, λ); ADR-013 and ADR-014 rule changes after first runs; eta cap in validation.fit_predict; 6 stalled lasso grid points.
+## Phase status (numbers live in artifacts/pN.json; do not copy them here by hand)
+| phase | status |
+|---|---|
+| 1 GD | done, tag gate-p1 |
+| 2 Polynomial | done, tag gate-p2 |
+| 3 Bias-variance | done, tag gate-p3; ladder extended once (ADR-015), target C6_weather_detail |
+| 4 Regularization | done, tag gate-p4; stage A (verdicts) → selection (ADR-016) → stage B (ADR-014) |
+| 5 Logistic | done, tag gate-p5 |
+| 6 Submission, notebook, report | built, tag gate-p6 |
+| verifier final gate | running → reports/verify/gate-final.json, TRACE statuses |
+| final fresh-context audit | running → reports/verify/final-audit.md |
+
+## Rule changes made after first results (all disclosed in notebook and report)
+ADR-013 (P3 target: plateau rule instead of argmax) · ADR-014 (final model on survivors, stage B) · ADR-015 (one new ladder level after residual analysis) · ADR-016 (L1 selection after removing redundant columns)
+
+## Known limits, disclosed
+validation scores optimistic (tuned on the same rows) · 5 Lasso grid points on the full design hit the sweep cap (none chosen) · eta cap in validation.fit_predict (inert for all reported fits) · trend extrapolation · no zero-demand hours in the data
 
 ## Definition of done
-- [x] D1 seed/split/chrono (verifier) · [x] D2 no leak P1–P3 (verifier; P4–P6 pending) · [x] D3 P1–P2 own GD verified · [ ] D4 chain assertions (p1–p4 pass; p5 pending) · [x] D5 P3 evidence · [ ] D6 P4 · [ ] D7 P5 · [ ] D8 Expectation/Outcome/justifications (P1–P3 done) · [ ] D9 notebook headless · [ ] D10 report · [ ] D11 submission · [x] D12 bonus (in p1.json) · [ ] D13 WALKTHROUGH · [x] D14 spec kit · [ ] D15 TRACE · [ ] D16 ceiling report · [ ] D17 H1–H13 verifier · [ ] D18 TOKENS · [ ] D19 final audit
+- [x] D1 · [x] D2 (leak_scan 0; tests) · [x] D3 · [x] D4 (chain_check 5/5; p6 upstream ok) · [x] D5 · [x] D6 · [x] D7 · [x] D8 (0 TODO stubs; Expectation commits precede artifacts) · [x] D9 (run.py nb errors=0) · [x] D10 (5 pages; number_trace 0 untraced) · [x] D11 (submission_check 0 failures, 0 warnings) · [x] D12 bonus (p1.bonus) · [x] D13 WALKTHROUGH · [x] D14 · [ ] D15 TRACE verified + `run.py verify` strict · [x] D16 reports/analysis/audit.md (stop condition b after ADR-015) · [ ] D17 verifier H1–H13 · [ ] D18 TOKENS explain-usage line · [ ] D19 final audit
