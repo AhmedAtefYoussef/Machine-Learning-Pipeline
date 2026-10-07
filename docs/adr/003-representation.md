@@ -1,0 +1,7 @@
+# ADR-003 Phase 1 base representation (35 columns) and what is deliberately left out until Phase 4
+status: accepted        phase: p0 (frozen at F1)        owner: chief
+context: R7 leaves the representation of hr, season, weathersit and dteday to us; plain GD needs a well-conditioned design; Phase 4 must judge every original column.
+options: hr numeric / cyclic harmonics / one-hot; all 14 columns in Phase 1 / a non-degenerate base now and all columns re-admitted as candidates in Phase 4
+evidence: exp/eda0/eda.json. hr numeric: validation R2 0.37 (raw target), negative with log target; 6 harmonics (12 cols) 0.651; one-hot (23 cols) 0.655. Exact or near-exact dependencies measured on train: workingday = f(weekday, holiday) with 0 exceptions; season = quarter of mnth; r(temp, atemp) = 0.985; r(instant, days) = 0.99999; r(yr, days) = 0.867. Base design condition number 45, lambda_max 1.97.
+decision: base = hr one-hot (hour 0 reference), workingday, holiday, weathersit one-hot with 4 merged into 3, temp, hum, windspeed, trend (days since start), two day-of-year harmonics. atemp, yr, instant, season, mnth, weekday stay out of Phases 1-3 because each is an exact or near-exact copy of something already in (a singular or near-singular Gram matrix makes the GD weights non-unique) and come back in Phase 4, where the penalised solvers can judge them.
+consequences: Phase 4 design = Phase 3 target design + the six candidates; verdicts come from models, not from this ADR.
