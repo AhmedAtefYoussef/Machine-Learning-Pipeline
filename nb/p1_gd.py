@@ -34,6 +34,12 @@ print("stability bound 2/lambda_max:", round(p1["lr_bound"], 4))
 print("learning rate used   :", round(p1["lr"], 4), "=", p1["lr_fraction"], "x bound")
 print("condition number     :", round(p1["condition_number"], 1))
 
+# %%
+# Our gradient descent, exactly as it runs above (src/gd.py): the loss, its gradient, and the loop.
+from src.gd import gradient_descent, mse_grad, mse_loss
+
+show_source(mse_loss, mse_grad, gradient_descent)
+
 # %% [markdown]
 # ### Justification: learning rate and stopping rule
 # - **Learning rate.** For a quadratic loss, gradient descent is stable only below 2 / λ_max of XᵀX/n. We compute λ_max = {{p1.lambda_max:.4f}} from our design, so the bound is {{p1.lr_bound:.4f}}, and we use {{p1.lr_fraction}} of it: lr = {{p1.lr:.4f}}. At half the bound every direction of the loss surface shrinks without overshooting, so the loss can only go down, and we keep a factor-two safety margin.
@@ -111,6 +117,37 @@ print("mean prediction ratio asymmetric / MSE:", round(bonus["mean_shift_ratio"]
 
 # %%
 show(plots.plot_bonus_shift(p1))
+
+# %%
+# The asymmetric loss and its gradient as implemented (src/gd_asym.py).
+from src.gd_asym import asym_grad, asym_loss
+
+show_source(asym_loss, asym_grad)
+
+# %% [markdown]
+# **A control for the bonus.** The comparison above changes two things at once: the bonus model is fitted on bikes
+# instead of log-bikes, *and* it weights under-predictions three times. To separate them we fit the same bike-scale
+# loss with k = 1 (no asymmetry), from the same starting weights. Fitting on bikes alone already moves the mean
+# prediction up by a factor {{bonus_control.shift_from_fitting_on_bikes:.3f}} (a log-scale fit aims at the median, a
+# bike-scale fit at the mean) and lowers the share of under-predicted hours from
+# {{p1.bonus.val.mse_model.under_share:.2f}} to {{bonus_control.val.k1_model.under_share:.2f}}. The asymmetry itself
+# adds a further factor {{bonus_control.shift_from_asymmetry:.3f}} and brings the share down to
+# {{p1.bonus.val.asym_model.under_share:.2f}}. So of the total shift of {{bonus_control.total_shift:.2f}}, roughly two
+# thirds is the operator's asymmetry and one third is the change of scale. (The k = 1 model also has the best plain
+# RMSE of the three, {{bonus_control.val.k1_model.rmse:.1f}}, for this additive design: squared error on bikes is what
+# RMSE measures. The table's "MSE model" is the Phase 1 model without a back-transform factor, RMSE
+# {{p1.bonus.val.mse_model.rmse:.1f}}; with the factor it is {{p1.val_rmse:.1f}}.)
+
+# %%
+from src import bonus_control
+
+control = bonus_control.run(CFG)   # side study: reads artifacts/p1.json, writes artifacts/bonus_control.json
+rows = {"Phase 1 (log-scale MSE)": p1["bonus"]["val"]["mse_model"], "bike-scale, k = 1": control["val"]["k1_model"],
+        "bike-scale, k = 3": p1["bonus"]["val"]["asym_model"]}
+print(pd.DataFrame(rows).T[["sq_cost", "abs_cost", "under_share", "mean_error", "rmse", "mean_pred"]].round(3).to_string())
+print("shift from fitting on bikes:", round(control["shift_from_fitting_on_bikes"], 3),
+      "| shift from the asymmetry:", round(control["shift_from_asymmetry"], 3),
+      "| total:", round(control["total_shift"], 3))
 
 # %% [markdown]
 # ## Outcome — Phase 1

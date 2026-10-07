@@ -66,6 +66,23 @@ enet = pd.DataFrame([{"l1_ratio": float(rho), "best_val_r2": max(r["val_r2"] for
                      for rho, rows in p4["curves"]["enet"].items()])
 print(enet.round(5).to_string(index=False))
 
+# %%
+# Our solvers (src/regularization.py): closed-form Ridge, and one sweep of coordinate descent with soft-thresholding,
+# which is the whole of Lasso (l1_ratio = 1) and Elastic Net.
+from src.regularization import cd_sweep, enet_cd_gram, ridge_closed_form, soft_threshold
+
+show_source(soft_threshold, ridge_closed_form, cd_sweep, enet_cd_gram)
+
+# %%
+# The chain, asserted: this phase was built on the Phase 3 artifact that is on disk now, and on its target level.
+from src.common import sha256_file
+
+assert p4["upstream_sha256"] == sha256_file("artifacts/p3.json"), "Phase 4 was not built from this Phase 3 artifact"
+assert p4["design_from"]["level"] == p3["target_complexity"]["level"], "Phase 4 did not use the Phase 3 target level"
+assert p4["design_from"]["n_features_before_candidates"] == p3["target_complexity"]["n_features"]
+print("Phase 4 consumed Phase 3: diagnosis", repr(p3["diagnosis"]["label"]), "-> target", p3["target_complexity"]["level"],
+      "(hash and level asserted)")
+
 # %% [markdown]
 # ### Justification: fair comparison of the three methods
 #
@@ -144,7 +161,7 @@ show(plot_stability(p4))
 # %% [markdown]
 # ### Justification: the survivor rule
 #
-# The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible. The order matters. We first remove every feature built from a column that is not "useful"; there are {{p4.survivor_counts.useful_design}} features left. On that reduced design we run Lasso again (penalty chosen by validation R²: {{p4.selection.lambda:.1e}}), and a feature survives if its weight is non-zero ({{p4.survivor_counts.lasso_nonzero}} features) and it is selected in at least {{p4.stability_threshold}} of 50 Lasso fits on resampled training days ({{p4.survivor_counts.stable}} remain).
+# The feature subset handed to Phase 5 is what L1 leaves non-zero, made reproducible. The order matters. We first remove every feature built from a column that is not "useful"; there are {{p4.survivor_counts.useful_design}} features left. On that reduced design we run Lasso again (penalty chosen by validation R²: {{p4.selection.lambda:.1e}}), and a feature survives if its weight is non-zero ({{p4.survivor_counts.lasso_nonzero}} features) and it is selected in at least {{p4.stability_threshold}} of 50 Lasso fits on resampled training days ({{p4.survivor_counts.stable}} remain). To be plain about what this means: on this reduced design Lasso removes almost nothing, so the surviving subset is decided almost entirely by the column verdicts, and those verdicts were decided by drop tests scored on the validation set. The subset is a tuning decision made on validation rows, like the degree and the penalties; no feature statistic was fitted on them.
 #
 # Our first version did it the other way round: take the Lasso zeros from the full design, then remove the copies. That turned out to be wrong for a reason worth stating. With month dummies, `yr` and `instant` in the design, Lasso let them stand in for some of the trend and day-of-year terms and zeroed those; the verdict step then removed the stand-ins as redundant, and the survivors had lost part of the time description twice. Validation R² hardly noticed, but the chronological score fell by about 0.013. Lasso should choose among features only after its choices are no longer between copies.
 
@@ -160,7 +177,7 @@ print("survivor columns (expanded features):", len(p4["survivors_expanded"]))
 # %% [markdown]
 # ### Justification: final model on the surviving columns
 #
-# Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing (dropping `mnth` alone changes validation R² by {{p4.column_verdicts.mnth.numbers.drop_alone.delta:.4f}}, interval {{p4.column_verdicts.mnth.numbers.drop_alone.lo:.4f}} to {{p4.column_verdicts.mnth.numbers.drop_alone.hi:.4f}}; a negative number means the model is better without it), and several of them are extra descriptions of time, which is exactly where our chronological split shows the model to be fragile. So we repeat the same search for the three methods on the surviving columns only (stage B) and recommend among those. Rule, fixed in advance: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². We added this second stage after seeing the first Phase 4 run; the earlier runs are in the git history.
+# Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing (dropping `mnth` alone changes validation R² by {{p4.column_verdicts.mnth.numbers.drop_alone.delta:.4f}}, interval {{p4.column_verdicts.mnth.numbers.drop_alone.lo:.4f}} to {{p4.column_verdicts.mnth.numbers.drop_alone.hi:.4f}}; a negative number means the model is better without it), and several of them are extra descriptions of time, which is exactly where our chronological split shows the model to be fragile. So we repeat the same search for the three methods on the surviving columns only (stage B) and recommend among those. The rule for choosing among the three methods was fixed before the first Phase 4 run: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². What we added after seeing the first run is this second stage itself, that is, applying the rule to models fitted on the survivors; the earlier runs are in the git history.
 
 # %%
 # Stage B: the same search (ridge, lasso, elastic net) on the surviving columns only.

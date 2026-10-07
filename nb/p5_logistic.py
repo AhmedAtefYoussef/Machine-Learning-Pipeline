@@ -91,6 +91,13 @@ print("\nchosen l2:", p5["l2"], "| iterations:", p5["iterations"], "| stop:", p5
 print("gradient check (max relative error): at zeros", f"{p5['gradient_check_at_zeros']:.1e}",
       "| halfway to the final weights", f"{p5['gradient_check_at_half']:.1e}")
 
+# %%
+# Our logistic regression (src/logistic.py): the log-loss, its gradient, and the fit, which reuses the Phase 1
+# gradient-descent loop.
+from src.logistic import fit_logistic, logloss, logloss_grad, sigmoid
+
+show_source(sigmoid, logloss, logloss_grad, fit_logistic)
+
 # %% [markdown]
 # ### Justification: metrics
 #

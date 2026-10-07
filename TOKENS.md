@@ -15,4 +15,9 @@
 | 2 | analyst audit + ceiling (EXP-A1..A3) | opus | 25 | 195k | no leak; ceiling gap 0.018; one measured improvement adopted (ADR-015) |
 | 3 | qa-engineer tests for weather memory, validation, labels | sonnet | 16 | 129k | 55 tests, 1 edge-case defect |
 | 3 | scribe WALKTHROUGH | opus | 24 | 264k | 345 lines; 6 inconsistencies reported |
-| 3 | coder S-4-03 selection order + final rebuild | sonnet | pending | pending | running |
+| 3 | coder S-4-03 selection order + final rebuild | sonnet | 44 | 114k | done; Phase 4 runtime 1395 s |
+| 4 | verifier final gate | sonnet | 32 | 138k | 0 failures, 3 warns (all addressed) |
+| 4 | independent final audit | opus | 39 | 274k | PASS WITH FIXES; fixes 2-7 applied, fix 1 (roster) is the user's |
+
+## Conclusion (from this ledger; the `explain-usage` skill was not run)
+Subagents used about 2.9M tokens in 17 runs. The largest items were not code but reading-heavy Opus passes (final audit 274k, scribe 264k, analyst 195k) and the Phase 4 coder, which ran three times (180k + 27k + 114k) because the Phase 4 design changed twice after first results (ADR-014, ADR-016). Next time: settle the survivor/final-model logic in a cheap closed-form pilot before specifying Phase 4, give Phase 4 a fast mode so a re-run does not cost 20 minutes, and hand the scribe a digest instead of the source tree.

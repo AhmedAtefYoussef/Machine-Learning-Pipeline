@@ -26,6 +26,12 @@ print("difference                  :", difference)
 assert abs(difference) <= 1e-9, "the hand-over from Phase 1 to Phase 2 is broken"
 print("hand-over check passed (|difference| <= 1e-9)")
 
+# %%
+# How the Phase 1 weights are placed into the longer Phase 2 vector (src/poly.py).
+from src.poly import lift_weights
+
+show_source(lift_weights)
+
 # %% [markdown]
 # ### Justification: what we expanded
 # We expand only where Phase 1's residuals showed structure.

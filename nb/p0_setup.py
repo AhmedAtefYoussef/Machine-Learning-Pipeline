@@ -4,12 +4,19 @@
 # This notebook runs the whole project from top to bottom. Every number comes from our own modules in `src/` and from the
 # JSON files in `artifacts/`; the cells only call them and show the results.
 #
-# **Runtime.** Phases 1 and 2 together take well under a minute on a laptop (single thread). The whole notebook is
-# budgeted at a few minutes; a cell that would take longer loads a cached artifact and says so.
+# **Runtime.** Phases 1 to 3 run live in well under a minute (single thread). Phase 4 takes about 20 minutes and
+# Phase 5 about 3, so their cells load the stored artifact when the configuration and the upstream artifact are
+# unchanged, and say so; with those two loaded the whole notebook runs in about a minute.
+#
+# **What the notebook needs.** The cells call our own modules in `src/` (the algorithms are printed below where they
+# are used), `config.yaml`, the three CSV files in `data/` and the stored `artifacts/`. Run it from the project folder.
 #
 # **How to change a setting.** Every knob lives in `config.yaml`. To try a different value, edit the `CFG` dictionary in the
 # next cell (for example `CFG["p1"]["lr_fraction_of_bound"] = 0.9`) and re-run the later cells; the phase cells pass `CFG`
-# to the phase code.
+# to the phase code. Changing a knob of Phase 1 or 2 also changes everything downstream, so the Phase 4 and 5 cells
+# will then recompute (about 20 minutes) and overwrite the stored artifacts and the submission file;
+# `git checkout -- artifacts sample_submission.csv` restores the submitted versions. For a quick demonstration that does
+# not touch the chain, call the functions directly in a scratch cell (examples are in `docs/WALKTHROUGH.md`).
 
 # %%
 import os
@@ -35,6 +42,15 @@ print("knobs     : p1 lr fraction =", CFG["p1"]["lr_fraction_of_bound"],
       "| p2 degrees =", CFG["p2"]["degree_candidates"], "| plateau tol =", CFG["p2"]["plateau_tol"])
 
 # %%
+import inspect
+
+
+def show_source(*functions):
+    """Print the source code of our own functions, so the algorithm is visible where the notebook uses it."""
+    for function in functions:
+        print(inspect.getsource(function))
+
+# %%
 train_all = load_train(CFG)
 train_df, val_df = seeded_split(train_all, SEED, CFG["split"]["test_size"])
 print("labelled rows :", train_all.shape)
@@ -54,13 +70,16 @@ quirks = pd.Series({
     "rows with weathersit == 3": int((train_all["weathersit"] == 3).sum()),
     "rows with weathersit == 4": int((train_all["weathersit"] == 4).sum()),
     "correlation of temp and atemp": round(float(np.corrcoef(train_all["temp"], train_all["atemp"])[0, 1]), 4),
+    "rows where workingday != (Mon-Fri and not holiday)": int(
+        (train_all["workingday"] != (train_all["weekday"].between(1, 5) & (train_all["holiday"] == 0)).astype(int)).sum()),
+    "rows where season != calendar quarter of mnth": int((train_all["season"] != (train_all["mnth"] - 1) // 3 + 1).sum()),
 }, name="value")
 print(quirks.to_string())
 
 # %% [markdown]
 # ### What we saw in the data before modelling
 #
-# We looked at the data first (the scripts are in `exp/eda0/`), and the Expectation cells of the phases were written after this look but before each phase was run.
+# We looked at the data first, and that look included pilot fits, not only tables. Before writing any Expectation cell we had fitted quick closed-form least-squares models (scripts in `exp/eda0/`) to compare raw and log targets, hour encodings, the working-day × hour block, a first version of the complexity ladder and three candidate label rules for Phase 5. So the Expectation cells are informed predictions, not blind guesses, and some of their numbers are close to the outcomes for that reason. What they could not know, and where they turned out wrong, is said in each Outcome cell. The Expectation cells were committed to git before the corresponding phase code was run and have not been edited since.
 #
 # - **Time structure.** `train.csv` holds days 1-19 of every month of 2011 and 2012; `test.csv` holds the 20th of every month. The hidden test is therefore whole days we have never seen, spread through the same two years. Rows are not independent: hours of one day resemble each other, and every validation row of our seeded split has same-day neighbours in the training portion.
 # - **Missing hours.** Some hours are absent, mostly between 2 and 5 at night, and `cnt` is never 0. Quiet hours seem to be missing rather than recorded as zero, so our models never see a zero-demand hour.
