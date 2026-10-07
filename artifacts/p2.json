@@ -15,7 +15,7 @@
   "wd_x_hr"
  ],
  "condition_number": 64.22545578148876,
- "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
+ "config_sha256": "c67c36a9a8ae54b177d07365bd85019d1fe05ec245566e7825c644d15cd17392",
  "degree": 3,
  "degree_sweep": [
   {
@@ -2448,7 +2448,7 @@
  "train_r2": 0.9120871563841543,
  "train_r2_log": 0.9408456835739736,
  "train_rmse": 53.46906812187541,
- "upstream_sha256": "5c27adec5e9fd4ff0c60f538bde707be5f91096d86f5367663b4487c98339532",
+ "upstream_sha256": "13404c6c1093cfd198891a32b5fc512f3487970c6dc971c3886fa73a50c137ae",
  "val_bootstrap": {
   "hi": 0.9209046363075102,
   "lo": 0.8992443626004968,
