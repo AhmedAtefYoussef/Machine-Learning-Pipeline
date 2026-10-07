@@ -26,6 +26,7 @@ float64 everywhere; no RNG except `np.random.default_rng(seed + k)` with a docum
 - `trend` = days since 2011-01-01 (float) · `doy_s1, doy_c1, doy_s2, doy_c2` = sin/cos(2πk·dayofyear/365.25)
 - candidates, not in the P1 base: `atemp` · `yr` · `instant` · `se_2..se_4` (season) · `mn_2..mn_12` (mnth) · `wk_1..wk_6` (weekday, 0 = Sunday reference)
 `BASE = hr_1..hr_23, workingday, holiday, ws_2, ws_3, temp, hum, windspeed, trend, doy_s1, doy_c1, doy_s2, doy_c2` (35 columns).
+- weather memory (ADR-015; frame columns `ws_lag1`, `wet3` made by `common.add_weather_memory` at load time, inputs only): `wslag1_2`, `wslag1_3`, `wet3_2`, `wet3_3`; blocks `wx_detail` = hum^2, hum^3, windspeed^2, temp*windspeed (4) and `ws_memory` = the four memory columns (4). `load_test` builds the timeline from both files' input columns.
 `sources(feature_name) -> frozenset[str]` original column(s) behind an expanded feature: hr_* → hr; ws_* → weathersit; trend, doy_* → dteday; se_* → season; mn_* → mnth; wk_* → weekday; `a^k` → sources(a); `a*b[*c]` → union. `bias` → ∅.
 
 `DesignSpec` (frozen dataclass; JSON-serialisable via `to_dict`/`from_dict`): `base: tuple[str]` (first-order columns), `power_cols: tuple[str]`, `degree: int` (1 = no powers), `blocks: tuple[str]`.

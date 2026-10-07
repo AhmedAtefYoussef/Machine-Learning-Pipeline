@@ -1,7 +1,13 @@
 # %% [markdown]
 # ## Phase 6 — Final model and submission
 #
-# TODO(chief)
+# **Which model.** The regression model our pipeline recommends is the Phase 4 stage-B model: {{p6.model.method}} with λ = {{p6.model.lambda:.1e}} and l1_ratio {{p6.model.l1_ratio}} on the surviving features. Nothing is tuned here.
+#
+# **Refit on training + validation, and why.** The hyper-parameters stay exactly as validated, but the weights are refitted on all {{p6.n_fit_rows}} labelled rows. The Phase 3 learning curve of the target was still rising at full size ({{p3.learning_curves.target.4.val_r2:.3f}} with 80% of the training days, {{p3.learning_curves.target.5.val_r2:.3f}} with all of them), so a quarter more rows should help a little, and the validation rows are days of the same months as the hidden ones. The scaler and the humidity fill stay as fitted on the training portion, so the hidden rows go through exactly the transformations used everywhere else. The cell first refits the validated model on the training rows alone and asserts that it reproduces the Phase 4 weights.
+#
+# **What we check without labels.** We cannot score the hidden days, and we do not tune anything on them. We only check that the predictions are sane: same rows and order as `test.csv`, no missing or negative values, the refitted model agrees closely with the validated one (correlation {{p6.a_vs_b_on_test.corr:.4f}}), and the predicted hourly profile by day type looks like the training profile (each cell between {{p6.profile_ratio.min:.2f}} and {{p6.profile_ratio.max:.2f}} times the training mean).
+#
+# **What the model cannot adapt to.** It extrapolates growth as a straight line in log space, which Phase 3 showed to be too steep beyond the observed period; it has never seen a zero-demand hour, weather outside the observed range, or holidays other than those in the training days. For the hidden days, which lie inside the two observed years, the held-out-day estimate of Phase 4 ({{p4.recommended.day_block_r2:.3f}}) is our best guess of the score; for a genuinely later period we would expect something nearer the chronological estimate ({{p4.recommended.chrono_r2:.3f}}).
 
 # %%
 # Phase 6 reads artifacts/p4.json (the recommended regression model on the surviving columns), refits it on training

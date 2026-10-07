@@ -1,0 +1,16 @@
+{
+  "spec_id": "S-7-02",
+  "agent": "qa-engineer",
+  "status": "done",
+  "files_changed": ["tests/test_weather_memory.py", "tests/test_validation.py", "tests/test_labels.py", "handoff/receipts/R-7-02.json"],
+  "tests": [
+    {"name": "tests/test_weather_memory.py", "pass": true, "value": "all pass"},
+    {"name": "tests/test_validation.py", "pass": true, "value": "all pass, 1 strict xfail (noise_floor all singletons)"},
+    {"name": "tests/test_labels.py", "pass": true, "value": "all pass"}
+  ],
+  "metrics_path": null,
+  "deviations": ["written in worktree .claude/worktrees/agent-a71573e61f26def77 (same HEAD as main checkout); copy the three test files and this receipt to the main checkout"],
+  "questions": ["noise_floor on a frame where every row is its own cell: adjusted floor divides by zero (src/validation.py:126); test kept as strict xfail"],
+  "notes": "No artifacts read or written; no phase run() called; no run.py. Full suite green. Every test under 1 s.",
+  "usage_note": "approx 25 turns"
+}
