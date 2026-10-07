@@ -43,9 +43,18 @@ def config_seed(cfg: dict) -> int:
 
 
 def set_threads(n: int = 1) -> None:
-    """Pin BLAS/OpenMP threads (only fully effective if called before numpy does heavy work)."""
+    """Pin BLAS/OpenMP to `n` threads so sums are added in the same order on every run and machine.
+
+    The environment variables cover libraries loaded later; `threadpool_limits` covers numpy's BLAS
+    when it is already loaded (as in a notebook kernel).
+    """
     for var in _THREAD_VARS:
         os.environ[var] = str(n)
+    try:
+        from threadpoolctl import threadpool_limits
+        threadpool_limits(limits=n)
+    except ImportError:  # the environment variables above are then the only pin
+        pass
 
 
 def load_train(cfg: dict) -> pd.DataFrame:

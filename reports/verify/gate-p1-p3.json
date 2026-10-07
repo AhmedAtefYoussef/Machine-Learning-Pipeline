@@ -1,0 +1,52 @@
+{
+ "gate": "p1-p3",
+ "deterministic": {
+  "verify-fast": ["ruff: 38 errors reported (e.g. tools/submission_check.py E401), not blocking the run", "176 passed", "leak_scan: 21 files, 0 findings", "chain_check: 3/3 artifacts, 0 failures", "req_check: 15 reqs {todo: 15}; 0 failures"],
+  "seed_recomputed": 44615,
+  "artifact_seeds": {"p1": 44615, "p2": 44615, "p3": 44615},
+  "rebuild_sha256": "run.py environment (single-thread BLAS): p1, p2, p3 byte-identical to HEAD. Bare 'python -m src.phases.pN' without thread env: p1 identical, p2 and p3 differ in the last digit (1e-16); restored with git checkout artifacts/ and re-verified identical."
+ },
+ "results": [
+  {"req_id": "R1", "verdict": "pass", "evidence_path": "artifacts/p1.json", "note": "p1-p3 artifacts and nb/p1-p3 exist in order; p4-p5 outside this gate."},
+  {"req_id": "R2", "verdict": "pass", "evidence_path": "src/phases/p2.py:43-60", "note": "P2 reads p1.json from disk, lifts weights, asserts init loss == p1 final (diff 0.0); P3 anchor from p2 design_spec; hashes chain."},
+  {"req_id": "R3", "verdict": "warn", "evidence_path": "nb/p1_gd.py", "note": "Expectation cells precede artifacts and are unchanged; 14 TODO(chief) stubs open; ADR-013 P3 target rule changed after first run."},
+  {"req_id": "R4", "verdict": "pass", "evidence_path": "src/common.py:63", "note": "Seed 44615 recomputed; exactly one train_test_split call; one chrono cut 2012-07-01; day-block folds are date-ranked, unseeded, inside train."},
+  {"req_id": "R5", "verdict": "pass", "evidence_path": "src/validation.py:44", "note": "Every Design, scaler and back-factor fitted on fit frame only, incl. day-block folds and chrono split; test.csv unused in p1-p3."},
+  {"req_id": "R6", "verdict": "pass", "evidence_path": "src", "note": "Only data/*.csv read; no network imports in src or nb. exp/eda0 reads test.csv for EDA only."},
+  {"req_id": "R7", "verdict": "pass", "evidence_path": "artifacts/p1.json", "note": "Own GD; converged in 474 iterations; gradient check 4.6e-7; oracle weight diff 5e-6; sweep has diverged, max_iter, converged runs."},
+  {"req_id": "R8", "verdict": "pass", "evidence_path": "artifacts/p2.json", "note": "Own GD from lifted p1 weights; degree 3, powers [temp], wd_x_hr; val R2 0.910 vs p1 0.721; ablation present."},
+  {"req_id": "R9", "verdict": "pass", "evidence_path": "artifacts/p3.json", "note": "Ladder x three validators, degree axis, learning curves, paired bootstrap, diagnosis under-fit, target C5; trust prose still TODO(chief)."},
+  {"req_id": "R12", "verdict": "pass", "evidence_path": "artifacts/p1.json", "note": "bonus: k=3 asymmetric GD, gradient check, converged, shift ratio and per-cell shift stored; derivation belongs to report."},
+  {"req_id": "R13", "verdict": "pass", "evidence_path": "artifacts/p3.json", "note": "val_r2 and val_rmse in p1 and p2; p3 estimates have r2 and rmse; bike scale after back-transform."},
+  {"constraint": "H1", "verdict": "pass", "evidence_path": "src/common.py:63", "note": "Seed formula correct incl. self-test 41698; one seeded split; one chronological cut."},
+  {"constraint": "H2", "verdict": "pass", "evidence_path": "src/features.py", "note": "All statistics learned in Design.fit on fit frame; p2 reuses p1 train scaler."},
+  {"constraint": "H3", "verdict": "pass", "evidence_path": "src", "note": "No external data or network access."},
+  {"constraint": "H4", "verdict": "pass", "evidence_path": "src/gd.py", "note": "No sklearn in gd.py, gd_asym.py, poly.py, p1.py, p2.py; np.linalg.lstsq only as labelled oracle, never used to fit."},
+  {"constraint": "H5", "verdict": "pass", "evidence_path": "artifacts/p3.json", "note": "upstream_sha256 of p2 equals sha(p1.json), of p3 equals sha(p2.json); loaded from disk."},
+  {"constraint": "H9", "verdict": "warn", "evidence_path": "docs/adr", "note": "Expectation commits 2ef385f/133ca8a precede artifacts 165baa8, text unchanged. P3 target rule (ADR-013) changed after results in af49e09."},
+  {"constraint": "H11", "verdict": "pass", "evidence_path": "src/common.py:56", "note": "load_test unused by p1-p3 and validation.py; no tuning on test.csv."},
+  {"constraint": "H13", "verdict": "pass", "evidence_path": "src/phases/p3.py", "note": "Chain uses closed-form OLS and own GD only; no out-of-course diagnostic models in chain."},
+  {"constraint": "reproducibility", "verdict": "warn", "evidence_path": "src/common.py:set_threads", "note": "set_threads runs after numpy import, so ineffective; bare python -m p2/p3 differs at 1e-16. Only run.py env pin is byte-safe."},
+  {"constraint": "leakage-disclosure", "verdict": "warn", "evidence_path": "src/phases/p1.py:146", "note": "Validation picks back-transform (p1.py backtransform_table), degree and power cols (p2.py smallest_within_tol), P3 target (p3.py pick_target). Disclose."},
+  {"constraint": "chrono-fit-rows", "verdict": "warn", "evidence_path": "src/phases/p3.py:35", "note": "Chrono validator fits on all labelled rows before cut, incl. seeded-val rows; chrono_detail corrected R2 uses late mean (diagnostic). State both."},
+  {"constraint": "tests-coverage", "verdict": "warn", "evidence_path": "tests", "note": "No tests for src/validation.py or phase modules end to end; ruff reports 38 lint errors."}
+ ],
+ "todo_chief_stubs": {
+  "nb/p1_gd.py": ["Justification: representation", "Justification: learning rate and stopping rule", "Justification: back-transform", "Justification: bonus", "Outcome Phase 1"],
+  "nb/p2_poly.py": ["Justification: initialisation from Phase 1", "Justification: what we expanded", "Justification: degree", "Outcome Phase 2"],
+  "nb/p3_bias_variance.py": ["Justification: what we varied (line 20)", "Justification: the chronological cut (77)", "Justification: which estimate to trust (97)", "Justification: target complexity (123)", "Outcome Phase 3 (128)"]
+ },
+ "trace_proposal": [
+  {"req_id": "R1", "status": "implemented", "code_ref": "run.py;src/phases/p1.py;src/phases/p2.py;src/phases/p3.py", "test_ref": "", "artifact_ref": "artifacts/p1.json;artifacts/p2.json;artifacts/p3.json"},
+  {"req_id": "R2", "status": "implemented", "code_ref": "src/phases/p2.py:fit_expanded;src/phases/p3.py:run;src/common.py:write_artifact", "test_ref": "tools/chain_check.py", "artifact_ref": "artifacts/p2.json:init_loss;artifacts/p3.json:upstream_sha256"},
+  {"req_id": "R3", "status": "implemented", "code_ref": "nb/p1_gd.py;nb/p2_poly.py;nb/p3_bias_variance.py", "test_ref": "git log: 2ef385f,133ca8a before 165baa8", "artifact_ref": "", "note": "verified once TODO(chief) stubs are filled"},
+  {"req_id": "R4", "status": "verified", "code_ref": "src/common.py:team_seed,seeded_split,chrono_split", "test_ref": "tests/test_common.py", "artifact_ref": "artifacts/p1.json:seed"},
+  {"req_id": "R5", "status": "verified", "code_ref": "src/features.py:Design;src/validation.py", "test_ref": "tests/test_features.py;tools/leak_scan.py", "artifact_ref": "artifacts/p3.json"},
+  {"req_id": "R6", "status": "verified", "code_ref": "src/common.py:load_train", "test_ref": "", "artifact_ref": ""},
+  {"req_id": "R7", "status": "verified", "code_ref": "src/gd.py;src/phases/p1.py", "test_ref": "tests/test_gd.py", "artifact_ref": "artifacts/p1.json:stop_reason,lr_sweep,gradient_check"},
+  {"req_id": "R8", "status": "verified", "code_ref": "src/phases/p2.py;src/poly.py", "test_ref": "tests/test_gd.py", "artifact_ref": "artifacts/p2.json:degree,feature_names,block_ablation"},
+  {"req_id": "R9", "status": "implemented", "code_ref": "src/phases/p3.py;src/validation.py", "test_ref": "tools/chain_check.py", "artifact_ref": "artifacts/p3.json", "note": "verified after trust and target prose written"},
+  {"req_id": "R12", "status": "implemented", "code_ref": "src/gd_asym.py;src/phases/p1.py:asymmetric_bonus", "test_ref": "tests/test_gd_asym.py", "artifact_ref": "artifacts/p1.json:bonus", "note": "derivation in report pending"},
+  {"req_id": "R13", "status": "implemented", "code_ref": "src/common.py:r2,rmse", "test_ref": "tools/chain_check.py", "artifact_ref": "artifacts/p1.json;artifacts/p2.json;artifacts/p3.json:estimates", "note": "full verify at p4-p5"}
+ ]
+}
