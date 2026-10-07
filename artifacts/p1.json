@@ -344,7 +344,7 @@
   }
  },
  "condition_number": 45.491861820268575,
- "config_sha256": "18c7f59602a961ef3188f7683cbe80832cf08e1ab56d3ba5cf6a208d7c6f090f",
+ "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
  "design_spec": {
   "base": [
    "hr_1",

@@ -40,7 +40,7 @@
    "rmse": 70.72415015675735
   }
  },
- "config_sha256": "18c7f59602a961ef3188f7683cbe80832cf08e1ab56d3ba5cf6a208d7c6f090f",
+ "config_sha256": "e21f737e5e584123b24a3bf10c13b7151beac52df372cb3b53575a4a1e34dbb8",
  "cut_date": "2012-07-01",
  "degree_axis": [
   {
@@ -887,6 +887,7 @@
   "hi": 0.027750951955502267,
   "lo": 0.015280730535038974
  },
+ "plateau_tol": 0.001,
  "seed": 44615,
  "target_complexity": {
   "blocks": [
@@ -956,7 +957,7 @@
  },
  "target_index": 5,
  "target_level": "C5_weekday_x_hr",
- "upstream_sha256": "56f8a7449933246e3e06a3b6597a46642c155205a1f403553ed220b9badfb778",
+ "upstream_sha256": "07e1bf42b2e1ba1021deee1ab46da489e34d1fade145bae0f51e1ee8dd0161a8",
  "val_bootstrap_anchor": {
   "hi": 0.9209046021599369,
   "lo": 0.8992442679002666,
