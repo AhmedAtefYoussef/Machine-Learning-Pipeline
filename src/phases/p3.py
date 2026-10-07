@@ -102,13 +102,13 @@ def check_anchor(rows: list[dict], anchor_index: int, p2: dict, anchor_spec: Des
 
 # ----------------------------------------------------------------------------- target level and diagnosis
 
-def pick_target(rows: list[dict]) -> int:
-    """Index of the ladder level with the highest seeded validation R2 (ties go to the lower index)."""
-    best = 0
+def pick_target(rows: list[dict], plateau_tol: float) -> int:
+    """Simplest ladder level whose seeded validation R2 is within `plateau_tol` of the best level (ADR-013)."""
+    best_r2 = max(row["seeded"]["r2"] for row in rows)
     for i, row in enumerate(rows):
-        if row["seeded"]["r2"] > rows[best]["seeded"]["r2"]:
-            best = i
-    return best
+        if row["seeded"]["r2"] >= best_r2 - plateau_tol:
+            return i
+    return len(rows) - 1
 
 
 def first_overfit_level(rows: list[dict], target: int) -> int | None:
@@ -176,7 +176,7 @@ def run(cfg: dict | None = None) -> dict:
     rows = score_ladder(levels, ctx)
     anchor_diff = check_anchor(rows, anchor_index, p2, anchor_spec, ctx)
     degree_rows = score_degree_axis(anchor_spec, cfg["p3"]["degree_axis"], ctx)
-    target_index = pick_target(rows)
+    target_index = pick_target(rows, float(cfg["p3"]["plateau_tol"]))
     anchor_row, target_row = rows[anchor_index], rows[target_index]
     target_spec = levels[target_index]["spec"]
 

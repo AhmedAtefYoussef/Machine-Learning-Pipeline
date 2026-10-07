@@ -40,6 +40,7 @@ p3:
   degree_axis: [1, 2, 3, 4, 5, 6, 8]
   learning_fractions: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
   fit_alpha: 1.0e-8
+  plateau_tol: 0.001                        # target = simplest ladder level within this validation R2 of the best (ADR-013)
 p4:
   candidate_blocks: [c_atemp, c_yr, c_instant, c_season, c_mnth, c_weekday]
   n_alphas: 40

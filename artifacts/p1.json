@@ -344,7 +344,7 @@
   }
  },
  "condition_number": 45.491861820268575,
- "config_sha256": "375b5a987e123a5e85d1d8aaed1be2acc7475199df889b25ddfe9991eee17d9e",
+ "config_sha256": "18c7f59602a961ef3188f7683cbe80832cf08e1ab56d3ba5cf6a208d7c6f090f",
  "design_spec": {
   "base": [
    "hr_1",
@@ -426,8 +426,8 @@
   "doy_c2"
  ],
  "grad_norm_final": 9.853358279925282e-07,
- "gradient_check": 0.005990875778743428,
- "gradient_check_at_final": 0.005990875778743428,
+ "gradient_check": 4.6136799075966205e-07,
+ "gradient_check_at_random": 4.239939060146219e-08,
  "gradient_check_at_zeros": 4.6136799075966205e-07,
  "hour_encoding_ablation": {
   "harmonics6": {

@@ -54,7 +54,7 @@ print("largest weight difference:", oracle["max_abs_weight_diff"])
 print("loss gap (GD minus exact):", oracle["loss_gap"])
 print("validation R2 difference :", oracle["val_r2_diff"])
 print("gradient check (max relative error): at zeros", p1["gradient_check_at_zeros"],
-      "| at final weights", p1["gradient_check_at_final"])
+      "| at a random point", p1["gradient_check_at_random"])
 
 # %% [markdown]
 # ### Justification: back-transform

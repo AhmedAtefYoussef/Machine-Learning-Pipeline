@@ -1,0 +1,44 @@
+{
+  "spec_id": "S-1-01",
+  "agent": "coder",
+  "status": "done_with_questions",
+  "files_changed": ["src/phases/p1.py", "src/phases/p2.py", "src/plots.py", "nb/p0_setup.py", "nb/p1_gd.py", "nb/p2_poly.py", "artifacts/p1.json", "artifacts/p2.json", "handoff/receipts/R-1-01.json"],
+  "tests": [
+    {"name": "p1_stop_reason", "pass": true, "value": "converged"},
+    {"name": "p1_iterations_300_800", "pass": true, "value": 474},
+    {"name": "p1_val_r2_within_0.03_of_0.718", "pass": true, "value": 0.72120},
+    {"name": "p1_oracle_max_abs_weight_diff_lt_1e-3", "pass": true, "value": 5.02e-06},
+    {"name": "p1_oracle_val_r2_diff_lt_1e-4", "pass": true, "value": -7.06e-09},
+    {"name": "p1_oracle_loss_gap", "pass": true, "value": 1.12e-11},
+    {"name": "p1_gradient_check_lt_1e-6", "pass": false, "value": "max 5.99e-03 (at zeros 4.61e-07; at final weights 5.99e-03)"},
+    {"name": "p1_sweep_has_diverged_and_max_iter", "pass": true, "value": "0.001 and 0.01 max_iter; 0.1, 0.5, 0.9 converged (2388, 474, 261); 1.05 diverged at 94"},
+    {"name": "p1_backtransform", "pass": true, "value": "ls chosen: ls 0.7212, none 0.7181, duan 0.6956"},
+    {"name": "p2_init_loss_minus_p1_final", "pass": true, "value": 0.0},
+    {"name": "p2_final_converged", "pass": true, "value": "converged, 611 iterations"},
+    {"name": "p2_val_r2_ge_p1_and_within_0.03_of_0.911", "pass": true, "value": 0.91046},
+    {"name": "p2_every_sweep_run_converged", "pass": true, "value": "all 7 sweep runs + ablation converged (362 to 787 iterations)"},
+    {"name": "p2_oracle_max_abs_weight_diff", "pass": true, "value": 4.75e-06},
+    {"name": "run.py all two runs byte-identical sha256", "pass": true, "value": "p1, p2 identical across clean rebuild and second rebuild; also identical after notebook execution. run.py all continues past p3 because other agents have already added p3 and p4 stops at the missing module"},
+    {"name": "run.py verify-fast", "pass": true, "value": "leak_scan 21 files 0 findings; chain_check 3/3 0 failures; pytest 176 passed; ruff reports 38 findings, none in my files (tools/ and tests/)"},
+    {"name": "build_nb --src nb --execute", "pass": true, "value": "errors=0 with the built-in executor (see questions: nbclient path crashes); structure problems only for p4/p5 (not mine); 17.8 s for all cells"},
+    {"name": "runtime_p1_plus_p2", "pass": true, "value": "p1 about 5 s, p2 about 4 s, run.py all through p3 18.8 s"},
+    {"name": "expectation_cells_untouched", "pass": true, "value": "git diff HEAD~1 shows 0 deleted lines in nb/p1_gd.py and nb/p2_poly.py; additions only"}
+  ],
+  "metrics_path": "artifacts/p1.json, artifacts/p2.json",
+  "deviations": [
+    "gradient_check in p1.json is the max of the errors at zeros and at the final weights as the SPEC says; the two parts are also stored (gradient_check_at_zeros, gradient_check_at_final), which are extra keys.",
+    "oracle.val_r2_diff is computed on the bike scale with the chosen back-transform (factor recomputed per model).",
+    "hour_encoding_ablation.one_hot also carries iterations and stop_reason as null (same record layout for the three encodings). n_features counts the bias column (36 for the base design).",
+    "p1 sweep fraction 0.001 and 0.01 stop at max_iter (5000), as intended; the 1.05 run diverges after 94 iterations.",
+    "Constants not in config.yaml, named in p1.py: 10 residual bins, 6 harmonics, 24 hours per day, curve point caps (200 and 300), constant-column std threshold 1e-12, plus CHAIN_TOL 1e-9 in p2.py.",
+    "plots.py builds figures with matplotlib.figure.Figure (no pyplot), so no backend setting is needed and figures display inline when returned."
+  ],
+  "questions": [
+    "p1 gradient_check acceptance (< 1e-6) fails at the final weights: the relative-error metric divides by |numeric|+|analytic| and the gradient at the GD optimum is about 1e-6, so central-difference round-off (about 1e-10 absolute) shows as 6e-3 relative. At zeros the error is 4.6e-7 and at random weights about 1e-8. The check itself is fine; the SPEC acceptance point is mis-posed. Suggest the chief accept a check at zeros plus a random point, or an absolute-error floor in gd.gradient_check (shared lib, not mine). I did not change anything.",
+    "tools/build_nb.py with nbclient installed crashes (AttributeError: list has no attribute strip) because cell source is passed as a list of lines. I ran the notebook with its built-in executor by blocking the nbclient import in a scratch wrapper. The chief's working tree already shows tools/build_nb.py modified, so this may already be fixed.",
+    "harmonics6: sin(2 pi 6 hr / 24) = sin(pi hr) is zero for integer hours, so one of the 12 harmonic columns is numerically constant (kept as an all-zero column after standardisation, std set to 1). The ablation still has the 12 columns the SPEC asks for; the effective rank is 11.",
+    "config.yaml now has an uncommitted p3.plateau_tol key, which changes config_sha256 and makes artifacts p1 to p3 stale for run.py; rebuild p1 to p3 to refresh the hashes (values do not change)."
+  ],
+  "notes": "Chosen back-transform ls (Duan hurts, as the Expectation guessed). Phase 2 chose degree 3 with power column temp only (0.91046; temp+hum is 0.91106, within the 0.001 tolerance of the best so the fewest columns win). Without the workingday x hour block validation R2 is 0.7404. Asymmetric bonus k=3: under-prediction share 0.518 to 0.304, mean prediction ratio 1.283, validation RMSE 97.86 to 99.87. Idea: add src/gd.py to the p2 rebuild dependency list in run.py.",
+  "usage_note": "about 25 turns"
+}

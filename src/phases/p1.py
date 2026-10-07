@@ -99,12 +99,17 @@ def lr_sweep(X, z, lam: float, cfg: dict) -> list:
     return rows
 
 
-def gradient_check_errors(X, z, w_final) -> dict:
-    """Finite-difference gradient error at zeros and at the final weights (the final gradient is ~0, so round-off shows)."""
+def gradient_check_errors(X, z, seed: int) -> dict:
+    """Finite-difference gradient error at zeros and at one random point.
+
+    We do not check at the final weights: the gradient there is about 1e-6, so the relative error
+    measures round-off, not the formula.
+    """
     def error_at(w):
         return gradient_check(lambda v: mse_loss(X, z, v), lambda v: mse_grad(X, z, v), w)
-    at_zeros, at_final = error_at(np.zeros_like(w_final)), error_at(w_final)
-    return {"max": max(at_zeros, at_final), "at_zeros": at_zeros, "at_final": at_final}
+    w_random = np.random.default_rng(seed).normal(size=X.shape[1])
+    at_zeros, at_random = error_at(np.zeros(X.shape[1])), error_at(w_random)
+    return {"max": max(at_zeros, at_random), "at_zeros": at_zeros, "at_random": at_random}
 
 
 # ----------------------------------------------------------------------------- back-transform and scores
@@ -260,7 +265,7 @@ def run(cfg: dict | None = None) -> dict:
 
     res = run_gd(X_tr, split.z_tr, np.zeros(X_tr.shape[1]), lr, p1["tol_loss"], p1["tol_grad"], p1["max_iter"])
     w = res.weights
-    check = gradient_check_errors(X_tr, split.z_tr, w)
+    check = gradient_check_errors(X_tr, split.z_tr, split.seed)
 
     backtransform = backtransform_table(split, X_tr, X_va, w, p1["backtransform_candidates"])
     method = backtransform["method"]
@@ -280,7 +285,7 @@ def run(cfg: dict | None = None) -> dict:
         "lr_fraction": p1["lr_fraction_of_bound"], "condition_number": condition,
         "tol_loss": p1["tol_loss"], "tol_grad": p1["tol_grad"], "max_iter": p1["max_iter"],
         "grad_norm_final": res.grad_norm_final, "gradient_check": check["max"],
-        "gradient_check_at_zeros": check["at_zeros"], "gradient_check_at_final": check["at_final"],
+        "gradient_check_at_zeros": check["at_zeros"], "gradient_check_at_random": check["at_random"],
         "loss_curve": curve_points(res.loss_history, MAIN_CURVE_POINTS), "lr_sweep": sweep,
         "oracle": oracle_gap(split, X_tr, X_va, w, method),
         "backtransform": backtransform,

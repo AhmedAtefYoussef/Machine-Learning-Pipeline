@@ -42,6 +42,8 @@ def to_ipynb(cells):
 def execute(nb, max_lines, timeout):
     try:
         import nbclient, nbformat
+        for c in nb["cells"]:  # nbclient needs string sources (kit fix: lists crashed it)
+            c["source"] = "".join(c["source"])
         nbo = nbformat.from_dict(nb)
         nbclient.NotebookClient(nbo, timeout=timeout, kernel_name="python3").execute()
         return nbformat.to_notebook_dict(nbo) if hasattr(nbformat, "to_notebook_dict") else json.loads(nbformat.writes(nbo)), []
