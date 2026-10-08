@@ -262,7 +262,7 @@ def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[
          "extra": (f"target seeded/day-block/chrono = {est['seeded']['r2']:.3f}/{est['day_holdout']['r2']:.3f}/"
                    f"{est['chrono']['r2']:.3f}; anchor = {est_anchor['seeded']['r2']:.3f}/"
                    f"{est_anchor['day_holdout']['r2']:.3f}/{est_anchor['chrono']['r2']:.3f}")},
-        {"phase": "P4 regularization", "consumed": "P3 target design + 6 candidate columns",
+        {"phase": "P4 regularization", "consumed": "P3 target design + the held-back candidate columns",
          "hyperparameters": f"{method_text}; recommended {rec['method']} lambda={rec['lambda']:.3g}",
          "n_features": len(p4["survivors_expanded"]) + 1, "train_score": None, "val_score": rec["val_r2"],
          "val_rmse": rec["val_rmse"], "extra": f"{len(p4['survivors_expanded'])} surviving columns from "

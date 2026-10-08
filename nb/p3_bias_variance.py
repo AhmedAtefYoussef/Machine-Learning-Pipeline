@@ -49,7 +49,7 @@ from src.common import load_config, read_artifact
 from src.phases import p3 as p3mod
 from src.plots_p3 import plot_degree_axis, plot_ladder, plot_learning_curves, plot_three_estimates
 
-p3 = phase("p3", p3mod.run, upstream="p2")  # loads artifacts/p3.json, or runs Phase 3
+p3 = phase("p3", p3mod.run, upstream="p2", live=True)  # runs Phase 3 here and now (about 15 seconds)
 
 # %%
 # The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R2.

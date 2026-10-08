@@ -57,7 +57,7 @@ Everything runs through `run.py` from the repository root (it replaces the kit's
 
 | Command | What it does | Time |
 |---|---|---|
-| `python run.py all` | rebuild `artifacts/p1.json … p5.json`; a phase rebuilds when anything upstream changed | about 25 min (Phase 4 is about 20) |
+| `python run.py all` | rebuild `artifacts/p1.json … p5.json`; a phase rebuilds when anything upstream changed | about 40 min (Phase 4 is about 30) |
 | `python run.py p1` … `p5` | rebuild one phase | seconds, except Phase 4 |
 | `python -m src.bonus_control` | the k = 1 control for the asymmetric-cost bonus | seconds |
 | `python run.py submission` | refit the recommended model and write `sample_submission.csv` | seconds |
@@ -140,6 +140,6 @@ and wrote the prose, and sub-agents wrote code, tests and audits from the specs 
 
 - The trend is a straight line on the transformed scale: sound inside 2011–2012, somewhat too steep beyond it.
 - The data contains no zero-demand hours, so the model has never seen one.
-- Phase 4 takes about 20 minutes, so changing an early setting is slow to propagate; see the drills in
+- Phase 4 takes about 30 minutes, so changing an early setting is slow to propagate; see the drills in
   [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) for quicker demonstrations.
 - About 35 lint warnings remain, mostly in the kit's `tools/`.

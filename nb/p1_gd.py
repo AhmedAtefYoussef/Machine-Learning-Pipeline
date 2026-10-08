@@ -51,7 +51,7 @@
 # - **Scaling.** Every column is standardised with the training mean and standard deviation only.
 
 # %%
-p1 = phase("p1", p1mod.run)   # loads artifacts/p1.json, or fits Phase 1 from scratch
+p1 = phase("p1", p1mod.run, live=True)   # fits Phase 1 from scratch, here and now
 print("training rows        :", p1["n_train"], "| validation rows:", p1["n_val"])
 print("columns (with bias)  :", p1["n_features"])
 print("target               :", p1["target_transform"])
@@ -68,9 +68,9 @@ from src.common import Target
 show_source(Target)
 
 # %% [markdown]
-# **Live check on this machine.** The cell above may have loaded the stored Phase 1 artifact. The next cell runs our
-# gradient descent again, here and now, from zero weights with the same settings, and compares the result with the
-# stored weight vector. Different machines add floating-point numbers in slightly different order, so we expect
+# **Live check on this machine.** The cell above ran the whole of Phase 1 and compared it with the stored artifact.
+# The next cell shows the core of it step by step: our gradient descent from zero weights with the same settings, and
+# the comparison of the result with the stored weight vector. Different machines add floating-point numbers in slightly different order, so we expect
 # agreement to many decimal places rather than bit for bit.
 
 # %%

@@ -1743,7 +1743,7 @@
    "val_score": 0.9413037156320282
   },
   {
-   "consumed": "P3 target design + 6 candidate columns",
+   "consumed": "P3 target design + the held-back candidate columns",
    "extra": "277 surviving columns from 8 original columns",
    "hyperparameters": "l2 lambda=0.001 val_r2=0.9405; l1 lambda=0.000215 val_r2=0.9406; enet lambda=0.000226 val_r2=0.9406; recommended l1 lambda=0.00017",
    "n_features": 278,
