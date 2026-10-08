@@ -71,8 +71,8 @@ def _by_hour(profile: dict, flag: int) -> tuple[list, list]:
 
 
 def plot_residual_profile(art_before: dict, art_after: dict | None = None) -> Figure:
-    """Question: does the log-scale residual show a pattern by hour and day type? Dashed lines = after (if given)."""
-    fig, ax = _new_axes("Mean log-scale residual by hour (train rows)", "hour of day", "mean residual of log1p(cnt)")
+    """Question: does the residual on the target scale z show a pattern by hour and day type? Dashed lines = after (if given)."""
+    fig, ax = _new_axes("Mean residual of the target z by hour (train rows)", "hour of day", "mean residual of z")
     ax.axhline(0.0, color=BLACK, lw=0.8)
     for flag, label, colour in DAY_TYPES:
         hours, means = _by_hour(art_before["residual_profile"], flag)
@@ -107,6 +107,24 @@ def plot_bonus_shift(p1: dict) -> Figure:
     ax.plot(hours, [c["mean_pred_asym"] for c in cells], "-s", ms=3, color=VERMILLION,
             label=f"asymmetric, k = {p1['bonus']['k']:g}")
     ax.legend()
+    return fig
+
+
+def plot_target_power(p1: dict, p3: dict | None = None) -> Figure:
+    """Question: which target exponent scores best, for the Phase 1 design and (if p3 is given) for the target design?"""
+    fig, ax = _new_axes("Validation R2 against the target exponent", "exponent of the target transform (0 = log)",
+                        "R2 on bikes")
+    table = p1["target_power_table"]
+    ax.plot([r["power"] for r in table], [r["val_r2"] for r in table], "-o", ms=4, color=BLUE,
+            label="Phase 1 design (validation)")
+    if p3 is not None:
+        check = p3["target_power_check"]
+        for key, label, colour, marker in (("seeded_r2", "target design, seeded", VERMILLION, "s"),
+                                           ("day_block_r2", "target design, held-out days", GREEN, "^"),
+                                           ("chrono_r2", "target design, chronological", ORANGE, "d")):
+            ax.plot([r["power"] for r in check], [r[key] for r in check], "-" + marker, ms=4, color=colour, label=label)
+    ax.axvline(p1["target_power"], color=BLACK, ls=":", label=f"exponent used {p1['target_power']:g}")
+    ax.legend(fontsize=8)
     return fig
 
 

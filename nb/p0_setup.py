@@ -11,10 +11,10 @@
 # If the two data files have not been uploaded yet, the setup cell asks for them. On our own machines, where the project
 # folder is already there, the setup cell unpacks nothing.
 #
-# **Runtime.** About a minute. Each phase cell loads the artifact that our own run stored when the configuration and
-# the upstream artifact are unchanged, and says so; Phase 4 alone takes about 20 minutes to compute and Phase 5 about 3.
-# One cell in Phase 1 re-runs our gradient descent live on this machine and compares the weights with the stored ones.
-# To recompute the whole chain from scratch set `RECOMPUTE_ALL = True` in the configuration cell (about half an hour).
+# **Runtime.** About two minutes. Phases 1 to 3 are computed live every time the notebook runs (seconds each) and
+# compared with the artifacts of our own run. Phase 4 takes about 30 minutes to compute and Phase 5 about 3, so those
+# two cells load the stored artifact when the configuration and the upstream artifact are unchanged, and say so.
+# To recompute the whole chain from scratch set `RECOMPUTE_ALL = True` in the configuration cell (about 40 minutes).
 # Numbers recomputed on another machine can differ from the text in the last digits, because the markdown cells quote
 # the stored run.
 #
@@ -24,7 +24,7 @@
 # **How to change a setting.** Every knob lives in `config.yaml`. To try a different value, edit the `CFG` dictionary in
 # the configuration cell (for example `CFG["p1"]["lr_fraction_of_bound"] = 0.9`) and re-run the later cells; the phase
 # cells pass `CFG` to the phase code. A phase whose configuration changed is recomputed, and so is everything after it,
-# so a change in Phase 1 or 2 costs the 20 minutes of Phase 4 and overwrites the stored artifacts and the submission
+# so a change in Phase 1 or 2 costs the 30 minutes of Phase 4 and overwrites the stored artifacts and the submission
 # file (`git checkout -- artifacts sample_submission.csv` restores them in our repository; on Colab, restart and run the
 # setup cell again in a clean session). For a quick demonstration that does not touch the chain, call the functions
 # directly in a scratch cell (examples are in `docs/WALKTHROUGH.md`).
@@ -110,6 +110,7 @@ if not DATA_MATCHES:
     print("The stored artifacts do not belong to these data files: set RECOMPUTE_ALL = True in the configuration cell.")
 
 # %%
+import json
 import os
 import sys
 
@@ -125,14 +126,55 @@ import src.phases.p2 as p2mod
 
 CFG = load_config()
 
-RECOMPUTE_ALL = False   # True: recompute every phase from scratch (about half an hour) instead of loading artifacts
+RECOMPUTE_ALL = False   # True: recompute every phase from scratch (about 40 minutes) instead of loading artifacts
 
 
-def phase(name, run_fn, upstream=None):
-    """Load the stored artifact of a phase if it was built from this configuration, otherwise run the phase."""
-    if RECOMPUTE_ALL:
-        return run_fn(CFG)
-    return cached_or_run(name, run_fn, CFG, upstream=upstream)
+def largest_difference(a, b):
+    """Largest relative difference between the numbers of two artifacts, and how many other entries differ."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        if a.keys() != b.keys():
+            return 0.0, 1
+        parts = [largest_difference(a[k], b[k]) for k in a]
+    elif isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return 0.0, 1
+        parts = [largest_difference(x, y) for x, y in zip(a, b)]
+    elif isinstance(a, float) and isinstance(b, float):
+        return abs(a - b) / max(abs(a), abs(b), 1e-12), 0
+    else:
+        return 0.0, int(a != b)
+    return max((p[0] for p in parts), default=0.0), sum(p[1] for p in parts)
+
+
+def phase(name, run_fn, upstream=None, live=False):
+    """Run a phase, or load its stored artifact.
+
+    live=False (the slow Phases 4 and 5): load the stored artifact if it was built from this configuration and
+    this upstream artifact, otherwise run the phase.
+    live=True (Phases 1 to 3, seconds each): always run the phase here and now, then compare the result with the
+    stored artifact. If the stored artifact belongs to this configuration it is put back afterwards, so that the
+    later phases, which are tied to it by its hash, stay valid; another machine can differ in the last digits.
+    """
+    path = os.path.join("artifacts", name + ".json")
+    if RECOMPUTE_ALL or not live or not os.path.exists(path) or CFG != load_config():
+        return run_fn(CFG) if RECOMPUTE_ALL else cached_or_run(name, run_fn, CFG, upstream=upstream)
+    with open(path, "rb") as handle:
+        stored_bytes = handle.read()
+    stored = json.loads(stored_bytes)
+    run_fn(CFG)                                           # the live run; it rewrites artifacts/<name>.json
+    with open(path, "rb") as handle:
+        fresh = json.loads(handle.read())                 # what the live run wrote
+    same_config = stored.get("config_sha256") == fresh.get("config_sha256")
+    same_upstream = stored.get("upstream_sha256") == fresh.get("upstream_sha256")
+    if not (same_config and same_upstream):
+        print(f"{name}: computed live; the stored artifact belonged to another configuration and was replaced")
+        return fresh
+    worst, other = largest_difference(stored, fresh)
+    with open(path, "wb") as handle:
+        handle.write(stored_bytes)
+    print(f"{name}: computed live just now; largest relative difference to the stored artifact {worst:.1e}, "
+          f"{other} other entries differ; stored file kept so that the later phases stay valid")
+    return stored
 SEED = config_seed(CFG)
 assert team_seed(["34521", "40218", "41190"]) == 41698   # the worked example of the brief
 print("team ids  :", CFG["team_ids"])
@@ -179,7 +221,7 @@ print(quirks.to_string())
 # %% [markdown]
 # ### What we saw in the data before modelling
 #
-# We looked at the data first, and that look included pilot fits, not only tables. Before writing any Expectation cell we had fitted quick closed-form least-squares models (scripts in `exp/eda0/`) to compare raw and log targets, hour encodings, the working-day × hour block, a first version of the complexity ladder and three candidate label rules for Phase 5. So the Expectation cells are informed predictions, not blind guesses, and some of their numbers are close to the outcomes for that reason. What they could not know, and where they turned out wrong, is said in each Outcome cell. The Expectation cells were committed to git before the corresponding phase code was run and have not been edited since.
+# **About our expectations.** We looked at the data first, and that look included pilot fits, not only tables. Before writing any Expectation cell we had fitted quick closed-form least-squares models (scripts in `exp/eda0/`) to compare raw and log targets, hour encodings, the working-day × hour block, a first version of the complexity ladder and three candidate label rules for Phase 5. So the Expectation cells are informed predictions, not blind guesses, and some of their numbers are close to the outcomes for that reason. What they could not know, and where they turned out wrong, is said in each Outcome cell. The Expectation cells were committed to git before the corresponding phase code was run and have not been edited since. The same holds, even more strongly, for the second-pass Expectation cells: before writing them we had already fitted the new target on these designs in closed form (`exp/v2/`), so their forecasts are close to the outcomes because we had measured something very similar, not because we foresaw it. What the brief asks of an Expectation, to commit to a prediction and a reason before the phase is run, they do; evidence of foresight they are not.
 #
 # - **Time structure.** `train.csv` holds days 1-19 of every month of 2011 and 2012; `test.csv` holds the 20th of every month. The hidden test is therefore whole days we have never seen, spread through the same two years. Rows are not independent: hours of one day resemble each other, and every validation row of our seeded split has same-day neighbours in the training portion.
 # - **Missing hours.** Some hours are absent, mostly between 2 and 5 at night, and `cnt` is never 0. Quiet hours seem to be missing rather than recorded as zero, so our models never see a zero-demand hour.
@@ -188,5 +230,5 @@ print(quirks.to_string())
 # - **Copies.** `atemp` follows `temp` (r = 0.985); `season` is the calendar quarter of `mnth`; `workingday` is an exact function of `weekday` and `holiday`; `yr`, `instant` and the date all measure time.
 # - **Quirks.** Humidity is 0 on a single day (sensor failure); wind speed is exactly 0 in about 12% of rows and takes only 28 distinct values; weather situation 4 occurs once.
 #
-# **Splits.** One seeded 80/20 split (the cell above) is used for every reported score and every tuning decision. Phase 3 adds one chronological split. Folds of whole days inside the training portion, fixed by the calendar rather than by a seed, are used only as a check. `test.csv` is read once, at the very end.
+# **Splits.** One seeded 80/20 split (the cell above) is used for every reported score and every tuning decision. Phase 3 adds one chronological split. Folds of whole days inside the training portion, fixed by the calendar rather than by a seed, are used as a check on every choice and, in one place, for more than a check: in Phase 4, among methods that are indistinguishable on the validation set, they break the tie (in our run the method they pick is also the best on validation, so the tie-break changed nothing). `test.csv` is used only for the final predictions; nothing is fitted or tuned on it. (Our first look at the data did open it, to see which days it holds.)
 

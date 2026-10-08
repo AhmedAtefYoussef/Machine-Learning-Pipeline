@@ -16,8 +16,8 @@ Each phase module: `run(cfg: dict | None = None) -> dict` loads the upstream art
 ## 2 Determinism
 float64 everywhere; no RNG except `np.random.default_rng(seed + k)` with a documented k; GD starts from zeros (P1) or lifted P1 weights (P2); JSON written with `sort_keys=True, indent=1`; floats stored at full precision (`repr` round-trip). Same config → byte-identical artifact (no timestamps inside `pN.json`).
 
-## 3 Target (ADR-001, ADR-002)
-`z = log1p(cnt)`. Models are linear in z. Prediction on the bike scale: `cnt_hat = clip(exp(eta) * s - 1, 0, None)` where `s` is the back-transform factor. P1 evaluates methods `none` (s=1), `duan` (s = mean(exp(z - eta)) on train), `ls` (s = Σ(cnt+1)·e^eta / Σ e^(2 eta) on train) on validation, stores the chosen method name in `p1.json["backtransform"]["method"]`; later phases reuse that METHOD (s recomputed from their own train residuals). All R²/RMSE are on the bike scale (`cnt`), plus `*_log` variants on z.
+## 3 Target (ADR-017, which supersedes the transform of ADR-001; ADR-002)
+`common.Target(power, back_method)` carries the transform through the chain (stored in p1.json as `target_power` and `backtransform.method`; later phases build it with `Target.from_artifact(p1)`). `z = forward(cnt)` = `log1p(cnt)` for power 0, else `((cnt+1)^power - 1)/power`. Models are linear in z. Bike scale: `q(eta)` = `exp(eta)` or `(power*eta + 1)^(1/power)`, `cnt_hat = clip(s*q(eta) - 1, 0, None)`, with the back-transform factor `s` = 1 (`none`) or the least-squares factor Σ(cnt+1)q / Σq² (`ls`) fitted on the fit rows (`duan` exists for power 0 only). The exponent is set in `config.yaml` (`p1.target_power`, 0.1) and fixed for the whole chain; Phase 1 shows a table over candidate exponents and Phase 3 re-checks the exponent on the target design. All R²/RMSE are on the bike scale. Evaluation fits cap eta at `target.eta_cap(cnt_fit)` (q ≤ e × the largest training count + 1).
 
 ## 4 Features (`src/features.py`)
 `raw_columns(df, hum_fill) -> DataFrame` unscaled named columns (ALL candidates, same index as df):

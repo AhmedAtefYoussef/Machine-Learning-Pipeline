@@ -17,6 +17,17 @@
 # 4. *Operating threshold.* Missing a high-demand hour (empty docks) is worse than a false alarm (a few idle bikes). With the same 3:1 cost ratio as the Phase 1 bonus, the cost-minimising cut-off for a calibrated model is 1/(1+3) = 0.25, not 0.5. We expect recall to rise sharply and precision to fall at 0.25, and the validation cost curve to have its minimum near 0.25 if our probabilities are well calibrated.
 # 5. *Features.* Hour dummies should matter little on their own here, because the label is already relative to the hour; temperature, humidity, weather situation and the day-of-year terms should carry the model.
 
+
+# %% [markdown]
+# ## Expectation — Phase 5, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged.*
+#
+# The label and the classifier do not use the regression target, so Phase 5 changes only if the surviving feature list
+# changes. We expect the same class balance and a ROC-AUC within 0.005 of the first pass (0.886). A tree model that we
+# tried outside the pipeline reaches about 0.90 on the same label, so we do not expect the logistic model to go higher
+# than that.
+
 # %% [markdown]
 # ### Justification: label rule
 #
@@ -173,6 +184,7 @@ for _, row in retro.iterrows():
 #
 # **What surprised us.**
 # - Accuracy is *lower* at our chosen cut-off ({{p5.metrics.accuracy:.3f}}) than at 0.5 ({{p5.metrics_at_0_5.accuracy:.3f}}), and barely above the do-nothing baseline of {{p5.class_balance.majority_accuracy:.3f}}. Judged by accuracy alone our operating point looks like a mistake; judged by the operator's cost it is clearly the better one. This is the clearest case in the project of a metric pointing the wrong way.
-# - The cost argument held more exactly than we expected: on our grid the validation cost is lowest at {{p5.t_cost_empirical}}, the theoretical value, even though the probabilities are not perfectly calibrated (largest gap {{p5.calibration_max_gap:.3f}}). We did not tune the cut-off on the validation rows.
+# - The cost argument holds up in practice: on our grid of cut-offs (steps of 0.05) the validation cost is lowest at {{p5.t_cost_empirical}}, next to the theoretical {{p5.t_cost}}, and the probabilities are usable but not perfectly calibrated (largest gap {{p5.calibration_max_gap:.3f}}). We kept the theoretical cut-off instead of tuning it on the validation rows.
+# - *Second pass:* as expected the classifier hardly moved (ROC-AUC {{p5.metrics.roc_auc:.3f}} against {{first_pass.p5.roc_auc:.3f}}), because neither the label nor the features depend on the regression target; only the survivor list changed slightly. The chosen ridge strength changed to {{p5.l2}}, by a margin inside the noise of the validation AUC.
 # - The honest task is much harder than the trivial one (AUC {{p5.label_variants.2.auc_full:.3f}} against {{p5.label_variants.0.auc_full:.3f}}). Whether an hour is unusually busy for its slot depends on things we only partly observe: the weather explains some of it, events and school holidays are not in the data.
 # - Even with the label made relative to the hour, hour-related columns still carry a large share of the weights (table above): the weather effect differs by hour, so the survivors' hour × weather interactions matter even though the hour alone predicts nothing.

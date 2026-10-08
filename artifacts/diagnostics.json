@@ -1,0 +1,29 @@
+{
+ "feature_blocks_tested": 20,
+ "note": "Diagnostic numbers from exp/v2 (second exploration round). Not part of the chain; nothing reads this file.",
+ "observation_weights": {
+  "held_out_days_delta": 0.002531997029224753,
+  "paired_se": 0.001379524436135708,
+  "seeded_delta": 0.0025420710512432665,
+  "seeded_hi": 0.004941132939954618,
+  "seeded_lo": 3.775785165245628e-05
+ },
+ "quarterly_trend_hinges": {
+  "chrono_delta": -0.4530349780915405,
+  "held_out_days_delta": 0.0027369886353997286,
+  "seeded_delta": 0.002894706451104012
+ },
+ "tree_classifier_roc_auc": 0.9014230576919836,
+ "tree_model": {
+  "chrono": 0.9024450439731119,
+  "held_out_days": 0.9503450740119253,
+  "seeded": 0.9659971659008686,
+  "seeded_minus_days": 0.015652091888943342
+ },
+ "weather_blocks_max_abs_days_delta": 0.0007388790360658426,
+ "year_month_levels": {
+  "chrono_delta": -0.053772171195597296,
+  "held_out_days_delta": 0.0030219883539785997,
+  "seeded_delta": 0.0037213976019585537
+ }
+}

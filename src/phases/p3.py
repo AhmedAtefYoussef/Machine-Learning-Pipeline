@@ -7,12 +7,12 @@ labelled `phase2` in config.yaml IS that design.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
 
-from src.common import (bootstrap_r2, chrono_split, config_seed, load_config, load_train,
+from src.common import (Target, bootstrap_r2, chrono_split, config_seed, load_config, load_train,
                         paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split, set_threads,
                         write_artifact)
 from src.features import BASE, HR, Design, DesignSpec
@@ -31,7 +31,7 @@ class Context:
     cut_date: str
     k: int
     alpha: float
-    back_method: str
+    target: Target
     seed: int
 
 
@@ -43,7 +43,7 @@ def build_context(cfg: dict, p1: dict) -> Context:
     all_df = load_train(cfg)
     train_df, val_df = seeded_split(all_df, seed, cfg["split"]["test_size"])
     return Context(all_df, train_df, val_df, cfg["chrono"]["cut_date"], cfg["day_block_folds"],
-                   cfg["p3"]["fit_alpha"], p1["backtransform"]["method"], seed)
+                   cfg["p3"]["fit_alpha"], Target.from_artifact(p1), seed)
 
 
 def ladder_specs(cfg: dict, anchor_spec: DesignSpec) -> list[dict]:
@@ -69,7 +69,7 @@ def ladder_specs(cfg: dict, anchor_spec: DesignSpec) -> list[dict]:
 
 def score_row(spec: DesignSpec, ctx: Context) -> dict:
     """The three validators on one spec, in the shape stored in p3.json."""
-    v = three_validators(spec, ctx.train_df, ctx.val_df, ctx.all_df, ctx.cut_date, ctx.back_method, ctx.k, ctx.alpha)
+    v = three_validators(spec, ctx.train_df, ctx.val_df, ctx.all_df, ctx.cut_date, ctx.target, ctx.k, ctx.alpha)
     seeded = {key: v["seeded"][key] for key in ("train_r2", "train_rmse", "r2", "rmse")}
     return {"blocks": list(spec.blocks), "degree": spec.degree, "power_cols": list(spec.power_cols),
             "n_features": v["seeded"]["p"], "seeded": seeded, "day_block": v["day_block"], "chrono": v["chrono"],
@@ -122,19 +122,40 @@ def first_overfit_level(rows: list[dict], target: int) -> int | None:
 
 def seeded_predictions(spec: DesignSpec, ctx: Context) -> np.ndarray:
     """Bike-scale predictions of `spec` on the seeded validation rows."""
-    return fit_predict(spec, ctx.train_df, ctx.val_df, ctx.back_method, ctx.alpha)[1]
+    return fit_predict(spec, ctx.train_df, ctx.val_df, ctx.target, ctx.alpha)[1]
 
 
 def chrono_detail(spec: DesignSpec, ctx: Context) -> dict:
     """What the chronological split does to one spec: scores, level drift, and a level-corrected diagnostic."""
     early_df, late_df = chrono_split(ctx.all_df, ctx.cut_date)
-    _, pred = fit_predict(spec, early_df, late_df, ctx.back_method, ctx.alpha)
+    _, pred = fit_predict(spec, early_df, late_df, ctx.target, ctx.alpha)
     cnt_late = late_df["cnt"].to_numpy(dtype=np.float64)
     corrected = pred * cnt_late.mean() / pred.mean()  # diagnostic only: uses the late period's own mean
     return {"cut_date": ctx.cut_date, "n_early": int(len(early_df)), "n_late": int(len(late_df)),
             "mean_cnt_early": float(early_df["cnt"].mean()), "mean_cnt_late": float(cnt_late.mean()),
             "r2": r2(cnt_late, pred), "rmse": rmse(cnt_late, pred), "mean_ratio": float(pred.mean() / cnt_late.mean()),
             "r2_level_corrected": r2(cnt_late, corrected)}
+
+
+def target_power_check(spec: DesignSpec, ctx: Context, cfg: dict) -> list[dict]:
+    """The target design fitted in closed form under each candidate exponent (same alpha, back-method of Phase 1).
+
+    One row per exponent: seeded, held-out-day (mean of the folds) and chronological validation R2."""
+    rows = []
+    for power in cfg["p1"]["target_power_candidates"]:
+        v = three_validators(spec, ctx.train_df, ctx.val_df, ctx.all_df, ctx.cut_date,
+                             replace(ctx.target, power=float(power)), ctx.k, ctx.alpha)
+        rows.append({"power": float(power), "seeded_r2": v["seeded"]["r2"], "day_block_r2": v["day_block"]["r2"],
+                     "chrono_r2": v["chrono"]["r2"]})
+    return rows
+
+
+def exponent_summary(check: list[dict], used: float, plateau_tol: float) -> dict:
+    """The exponent in use, the exponent with the best seeded R2, and whether the used one is within the plateau tolerance."""
+    best = max(check, key=lambda row: row["seeded_r2"])
+    at_used = next(row for row in check if row["power"] == used)
+    return {"target_power_used": used, "target_power_best_seeded": best["power"],
+            "target_power_consistent": bool(at_used["seeded_r2"] >= best["seeded_r2"] - plateau_tol)}
 
 
 def classify(anchor: dict, target: dict, gain_lo: float, gain_hi: float, day_block_gain: float) -> str:
@@ -186,9 +207,12 @@ def run(cfg: dict | None = None) -> dict:
     boot_anchor = bootstrap_r2(y_val, pred_anchor, ctx.seed, cfg["bootstrap"]["B"])
     boot_target = bootstrap_r2(y_val, pred_target, ctx.seed, cfg["bootstrap"]["B"])
 
+    power_check = target_power_check(target_spec, ctx, cfg)
+    exponent = exponent_summary(power_check, ctx.target.power, float(cfg["p3"]["plateau_tol"]))
+
     curve_specs = {"anchor": anchor_spec, "target": target_spec, "top": levels[-1]["spec"]}
     curves = {key: learning_curve(spec, ctx.train_df, ctx.val_df, cfg["p3"]["learning_fractions"], ctx.seed,
-                                  ctx.back_method, ctx.alpha) for key, spec in curve_specs.items()}
+                                  ctx.target, ctx.alpha) for key, spec in curve_specs.items()}
 
     est_anchor, est_target = estimates_block(anchor_row, boot_anchor), estimates_block(target_row, boot_target)
     day_block_gain = target_row["day_block"]["r2"] - anchor_row["day_block"]["r2"]
@@ -211,6 +235,7 @@ def run(cfg: dict | None = None) -> dict:
         "paired_target_vs_anchor": {"delta": gain, "lo": gain_lo, "hi": gain_hi},
         "val_bootstrap_anchor": dict(zip(("lo", "hi", "se"), boot_anchor)),
         "val_bootstrap_target": dict(zip(("lo", "hi", "se"), boot_target)),
+        "target_power_check": power_check, **exponent,
         "learning_curves": curves,
         "chrono_detail": {"anchor": chrono_detail(anchor_spec, ctx), "target": chrono_detail(target_spec, ctx)},
         "noise_floor": noise_floor(ctx.train_df),
@@ -226,7 +251,7 @@ def run(cfg: dict | None = None) -> dict:
                    "anchor_index": anchor_index,
                    "feature_names_sha256": hashlib.sha256("\n".join(p2["feature_names"]).encode()).hexdigest(),
                    "p2_val_r2": p2["val_r2"]},
-        "cut_date": ctx.cut_date, "k_folds": ctx.k, "fit_alpha": ctx.alpha, "back_method": ctx.back_method,
+        "cut_date": ctx.cut_date, "k_folds": ctx.k, "fit_alpha": ctx.alpha, "back_method": ctx.target.back_method,
         "plateau_tol": float(cfg["p3"]["plateau_tol"])}
     write_artifact("p3", payload, upstream="p2", cfg=cfg)
     return payload

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.optimize import minimize_scalar  # leak-ok: oracle for the factor
 
 common = pytest.importorskip("src.common")
 
@@ -72,9 +73,7 @@ def test_r2_rmse_vs_sklearn(rng):
     assert common.rmse(y, yh) == pytest.approx(np.sqrt(mean_squared_error(y, yh)), abs=1e-12)  # leak-ok: oracle
 
 
-def test_to_target_is_log1p():
-    cnt = np.array([0.0, 1.0, 10.0, 977.0])
-    assert np.allclose(common.to_target(cnt), np.log1p(cnt), atol=0, rtol=1e-15)
+POWERS = [0.0, 0.1, 0.5, 1.0]
 
 
 def _synthetic(rng, n=500):
@@ -84,28 +83,96 @@ def _synthetic(rng, n=500):
     return z, eta, cnt
 
 
-def test_back_factor_formulas(rng):
+@pytest.mark.parametrize("power", POWERS)
+def test_target_forward_and_q_are_inverses(power):
+    t = common.Target(power, "none")
+    cnt = np.linspace(0.0, 977.0, 200)
+    assert np.allclose(t.q(t.forward(cnt)), cnt + 1.0, rtol=1e-12)
+    eta = np.linspace(-0.5, 6.0, 100)   # q(eta) - 1 >= 0 here for every power in the list
+    assert np.allclose(t.forward(t.q(eta) - 1.0), eta, rtol=1e-10, atol=1e-10)
+
+
+def test_target_power_zero_is_log1p_and_small_power_approaches_it():
+    cnt = np.array([0.0, 1.0, 10.0, 977.0])
+    assert np.allclose(common.Target(0.0, "none").forward(cnt), np.log1p(cnt), atol=0, rtol=1e-15)
+    near, log = common.Target(1e-8, "none"), common.Target(0.0, "none")
+    assert np.allclose(near.forward(cnt), log.forward(cnt), atol=1e-6, rtol=1e-6)
+    eta = np.array([-1.0, 0.0, 2.0, 5.0])
+    assert np.allclose(near.q(eta), log.q(eta), rtol=1e-6)
+
+
+@pytest.mark.parametrize("power", POWERS)
+def test_factor_ls_minimises_squared_error(rng, power):
+    t = common.Target(power, "ls")
+    cnt = rng.integers(0, 600, size=300).astype(float)
+    eta = t.forward(cnt) + rng.normal(size=300) * 0.1 * (1 if power == 0 else max(power, 0.3))
+    s = t.factor(eta, cnt)
+    q = t.q(eta)
+    def sse(c):
+        return np.sum((cnt + 1.0 - c * q) ** 2)
+
+    best = minimize_scalar(sse, bracket=(0.5, 1.0, 1.5), tol=1e-12).x
+    assert s == pytest.approx(best, rel=1e-6)
+
+
+def test_factor_none_duan_and_unknown(rng):
     z, eta, cnt = _synthetic(rng)
-    assert common.back_factor("none", z, eta, cnt) == 1.0
-    duan = np.mean(np.exp(z - eta))
-    assert common.back_factor("duan", z, eta, cnt) == pytest.approx(duan, rel=1e-12)
-    ls = np.sum((cnt + 1) * np.exp(eta)) / np.sum(np.exp(2 * eta))
-    assert common.back_factor("ls", z, eta, cnt) == pytest.approx(ls, rel=1e-12)
+    log = common.Target
+    assert log(0.0, "none").factor(eta, cnt) == 1.0
+    assert log(0.0, "duan").factor(eta, cnt) == pytest.approx(np.mean(np.exp(z - eta)), rel=1e-12)
+    assert log(0.0, "ls").factor(eta, cnt) == pytest.approx(np.sum((cnt + 1) * np.exp(eta)) / np.sum(np.exp(2 * eta)), rel=1e-12)
+    with pytest.raises(ValueError):
+        log(0.1, "duan").factor(eta, cnt)
+    with pytest.raises(ValueError):
+        log(0.0, "bogus").factor(eta, cnt)
 
 
-def test_back_factor_unknown_method_raises(rng):
-    z, eta, cnt = _synthetic(rng, 20)
-    with pytest.raises(Exception):
-        common.back_factor("bogus", z, eta, cnt)
+def test_valid_back_methods_drops_duan_for_nonzero_power():
+    assert common.valid_back_methods(0.1, ["none", "duan", "ls"]) == ["none", "ls"]
+    assert common.valid_back_methods(0.0, ["none", "duan", "ls"]) == ["none", "duan", "ls"]
 
 
-def test_from_target_formula_and_clip():
+@pytest.mark.parametrize("power", POWERS)
+def test_to_bikes_formula_and_clip_at_zero(power):
+    t = common.Target(power, "ls")
     eta = np.array([-5.0, 0.0, 1.0, 4.0])
-    out = common.from_target(eta, 1.1)
-    expect = np.clip(np.exp(eta) * 1.1 - 1, 0, None)
-    assert np.allclose(out, expect, rtol=1e-12)
-    assert out[0] == 0.0 and out[1] == pytest.approx(0.1, abs=1e-12)
+    out = t.to_bikes(eta, 1.1)
+    assert np.allclose(out, np.clip(1.1 * t.q(eta) - 1.0, 0.0, None), rtol=1e-12)
     assert (out >= 0).all()
+    assert t.to_bikes(np.array([-50.0]), 1.0)[0] == 0.0
+
+
+def test_to_bikes_power_zero_hand_values():
+    out = common.Target(0.0, "ls").to_bikes(np.array([-5.0, 0.0]), 1.1)
+    assert out[0] == 0.0 and out[1] == pytest.approx(0.1, abs=1e-12)
+
+
+def test_eta_cap_power_zero_equals_max_z_plus_one():
+    cnt = np.array([0.0, 5.0, 977.0, 12.0])
+    assert common.Target(0.0, "none").eta_cap(cnt) == np.log1p(cnt).max() + 1.0
+
+
+@pytest.mark.parametrize("power", [0.1, 0.5, 1.0])
+def test_eta_cap_is_where_q_reaches_e_times_the_largest(power):
+    t = common.Target(power, "none")
+    cnt = np.array([0.0, 5.0, 977.0])
+    assert t.q(t.eta_cap(cnt)) == pytest.approx(np.e * 978.0, rel=1e-9)
+
+
+@pytest.mark.parametrize("power", POWERS)
+def test_dq_deta_matches_finite_difference(power):
+    t = common.Target(power, "none")
+    eta = np.linspace(0.5, 5.0, 40)
+    h = 1e-6
+    fd = (t.q(eta + h) - t.q(eta - h)) / (2 * h)
+    assert np.allclose(t.dq_deta(eta), fd, rtol=1e-6)
+
+
+def test_target_artifact_round_trip():
+    t = common.Target(0.1, "ls")
+    assert common.Target.from_artifact(t.to_dict()) == t
+    p1 = {"target_power": 0.0, "backtransform": {"method": "duan", "factor": 1.04}}
+    assert common.Target.from_artifact(p1) == common.Target(0.0, "duan")
 
 
 def test_bootstrap_r2_properties(rng):

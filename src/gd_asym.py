@@ -1,18 +1,18 @@
-"""Bonus (ADR-008): asymmetric cost on the bike scale for the log-link model.
+"""Bonus (ADR-008): asymmetric cost on the bike scale for the power-target model.
 
-Model: yhat = exp(X w) - 1 (X has the bias column). Residual r = yhat - y (y = cnt).
-Cost weight c_i = k if r_i < 0 (under-prediction) else 1.
+Model: yhat = q(X w) - 1, where q is the inverse of the target transform (src.common.Target; exp for the log).
+X has the bias column. Residual r = yhat - y (y = cnt). Cost weight c_i = k if r_i < 0 (under-prediction) else 1.
 """
 import numpy as np
 
+from src.common import Target
 from src.gd import GDResult
 
-EXP_CAP = 20.0  # clip on the exponent argument, avoids overflow
 
-
-def _predict_cnt(X, w):
-    """yhat = exp(min(X w, 20)) - 1.   X (n,p), w (p,) -> (n,)."""
-    return np.exp(np.minimum(X @ w, EXP_CAP)) - 1.0
+def _eta(X, w, y, target: Target, cap=None):
+    """eta = X w, held at or below the cap (default target.eta_cap(y)) so that q(eta) stays finite."""
+    cap = target.eta_cap(y) if cap is None else cap
+    return np.minimum(X @ w, cap)
 
 
 def _cost_weights(r, k):
@@ -20,21 +20,21 @@ def _cost_weights(r, k):
     return np.where(r < 0, k, 1.0)
 
 
-def asym_loss(X, y, w, k=3.0):
-    """L(w) = (1/n) sum_i c_i r_i^2 with r = exp(Xw) - 1 - y."""
-    r = _predict_cnt(X, w) - y
+def asym_loss(X, y, w, target: Target, k=3.0, cap=None):
+    """L(w) = (1/n) sum_i c_i r_i^2 with r = q(Xw) - 1 - y."""
+    r = target.q(_eta(X, w, y, target, cap)) - 1.0 - y
     return float(np.mean(_cost_weights(r, k) * r ** 2))
 
 
-def asym_grad(X, y, w, k=3.0):
-    """grad L = (2/n) X^T (c * r * exp(Xw)); shape (p,).
+def asym_grad(X, y, w, target: Target, k=3.0, cap=None):
+    """grad L = (2/n) X^T (c * r * dq/deta); shape (p,).
 
-    The chain rule through exp gives the exp(Xw) factor. The weight switch has no
+    The chain rule through q gives the dq/deta factor (exp(Xw) for the log). The weight switch has no
     derivative term because r = 0 exactly where c changes.
     """
-    exp_eta = np.exp(np.minimum(X @ w, EXP_CAP))
-    r = exp_eta - 1.0 - y
-    return 2.0 / len(y) * (X.T @ (_cost_weights(r, k) * r * exp_eta))
+    eta = _eta(X, w, y, target, cap)
+    r = target.q(eta) - 1.0 - y
+    return 2.0 / len(y) * (X.T @ (_cost_weights(r, k) * r * target.dq_deta(eta)))
 
 
 def _backtrack(loss_fn, w, loss, grad, step):
@@ -52,7 +52,7 @@ def _backtrack(loss_fn, w, loss, grad, step):
     return None
 
 
-def fit_asymmetric(X, y, w0, k=3.0, max_iter=20000, tol_loss=1e-10, t0=1e-3):
+def fit_asymmetric(X, y, w0, target: Target, k=3.0, max_iter=20000, tol_loss=1e-10, t0=1e-3):
     """Gradient descent with Armijo backtracking on asym_loss.
 
     Each iteration tries step t, halves it until sufficient decrease, accepts, and the
@@ -60,8 +60,10 @@ def fit_asymmetric(X, y, w0, k=3.0, max_iter=20000, tol_loss=1e-10, t0=1e-3):
     <= tol_loss for 10 consecutive iterations; "stalled" if no step decreases the loss;
     otherwise "max_iter".
     """
+    cap = target.eta_cap(y)   # computed once per fit
+
     def loss_fn(w):
-        return asym_loss(X, y, w, k)
+        return asym_loss(X, y, w, target, k, cap)
 
     w = np.array(w0, dtype=np.float64)
     loss = loss_fn(w)
@@ -72,7 +74,7 @@ def fit_asymmetric(X, y, w0, k=3.0, max_iter=20000, tol_loss=1e-10, t0=1e-3):
     iterations = 0
 
     for iterations in range(1, max_iter + 1):
-        grad = asym_grad(X, y, w, k)
+        grad = asym_grad(X, y, w, target, k, cap)
         found = _backtrack(loss_fn, w, loss, grad, step)
         if found is None:
             stop_reason = "stalled"
@@ -87,7 +89,7 @@ def fit_asymmetric(X, y, w0, k=3.0, max_iter=20000, tol_loss=1e-10, t0=1e-3):
             stop_reason = "converged"
             break
 
-    grad_norm = float(np.linalg.norm(asym_grad(X, y, w, k)))
+    grad_norm = float(np.linalg.norm(asym_grad(X, y, w, target, k, cap)))
     return GDResult(weights=w, iterations=iterations, stop_reason=stop_reason,
                     loss_history=[float(v) for v in history],
                     grad_norm_final=grad_norm, loss_final=float(loss))

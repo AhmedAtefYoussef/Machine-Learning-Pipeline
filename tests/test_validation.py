@@ -11,9 +11,11 @@ import pandas as pd
 import pytest
 
 from src import common, validation
+from src.common import Target
 from src.features import BASE, Design, DesignSpec
 
 SPEC = DesignSpec(base=tuple(BASE), power_cols=(), degree=1, blocks=("wd_x_hr",))
+T_DUAN = Target(0.0, "duan")   # the log target with Duan's smearing factor (the v1 setting)
 TOL = 1e-5          # GD-free closed forms: ridge alpha = 1e-8 versus plain lstsq
 
 
@@ -44,6 +46,18 @@ def _oracle(spec, fit_df, eval_df, method):
     return {"p": Xf.shape[1], "train_r2": _r2(cf, pf), "train_rmse": float(np.sqrt(np.mean((cf - pf) ** 2))),
             "r2": _r2(ce, pe), "rmse": float(np.sqrt(np.mean((ce - pe) ** 2))),
             "train_r2_log": _r2(zf, ef), "r2_log": _r2(ze, ee)}
+
+
+def _oracle_power(spec, fit_df, eval_df, power):
+    """Independent power-target oracle: lstsq on z, least-squares factor on q = (power*eta + 1)^(1/power)."""
+    d = Design(spec).fit(fit_df)
+    Xf, Xe = d.transform(fit_df), d.transform(eval_df)
+    cf, ce = fit_df["cnt"].to_numpy(float), eval_df["cnt"].to_numpy(float)
+    zf = ((cf + 1) ** power - 1) / power
+    w = np.linalg.lstsq(Xf, zf, rcond=None)[0]
+    qf, qe = (power * Xf @ w + 1) ** (1 / power), (power * Xe @ w + 1) ** (1 / power)
+    s = float(np.sum((cf + 1) * qf) / np.sum(qf * qf))
+    return {"r2": _r2(ce, np.clip(s * qe - 1, 0, None)), "train_r2": _r2(cf, np.clip(s * qf - 1, 0, None))}
 
 
 # ---------------------------------------------------------------- data (every 4th date of the training file)
@@ -112,7 +126,7 @@ def test_fit_linear_does_not_penalise_the_bias():
 @pytest.mark.parametrize("method", ["none", "duan", "ls"])
 def test_evaluate_spec_equals_oracle_on_bike_scale(sub_split, method):
     fit_df, eval_df = sub_split
-    res = validation.evaluate_spec(SPEC, fit_df, eval_df, method)
+    res = validation.evaluate_spec(SPEC, fit_df, eval_df, Target(0.0, method))
     ref = _oracle(SPEC, fit_df, eval_df, method)
     for k in ("train_r2", "train_rmse", "r2", "rmse", "train_r2_log", "r2_log"):
         assert res[k] == pytest.approx(ref[k], abs=TOL, rel=TOL), k
@@ -120,29 +134,37 @@ def test_evaluate_spec_equals_oracle_on_bike_scale(sub_split, method):
     assert res["rmse"] > 5.0                                           # bike scale (cnt sd ~ 180), not log scale
 
 
+def test_evaluate_spec_power_target_equals_oracle(sub_split):
+    fit_df, eval_df = sub_split
+    res = validation.evaluate_spec(SPEC, fit_df, eval_df, Target(0.1, "ls"))
+    ref = _oracle_power(SPEC, fit_df, eval_df, 0.1)
+    for k in ("train_r2", "r2"):
+        assert res[k] == pytest.approx(ref[k], abs=TOL, rel=TOL), k
+
+
 def test_evaluate_spec_fits_on_fit_frame_only(sub_split):
     fit_df, eval_df = sub_split
-    base = validation.evaluate_spec(SPEC, fit_df, eval_df, "duan")
+    base = validation.evaluate_spec(SPEC, fit_df, eval_df, T_DUAN)
     wild = eval_df.assign(temp=eval_df["temp"] * 5 + 3, hum=1.0, windspeed=eval_df["windspeed"] + 10)
-    other = validation.evaluate_spec(SPEC, fit_df, wild, "duan")
+    other = validation.evaluate_spec(SPEC, fit_df, wild, T_DUAN)
     for k in ("p", "train_r2", "train_rmse", "train_r2_log"):
         assert other[k] == base[k], k                                  # training scores cannot see the evaluation frame
     assert other["r2"] != base["r2"]                                   # power: the evaluation did change
     shrunk = eval_df.iloc[: len(eval_df) // 3]
-    again = validation.evaluate_spec(SPEC, fit_df, shrunk, "duan")
+    again = validation.evaluate_spec(SPEC, fit_df, shrunk, T_DUAN)
     for k in ("train_r2", "train_rmse", "train_r2_log"):
         assert again[k] == base[k], k
     # the evaluation labels play no part in the fit either
     relab = eval_df.assign(cnt=eval_df["cnt"].iloc[::-1].to_numpy())
-    assert validation.evaluate_spec(SPEC, fit_df, relab, "duan")["train_r2"] == base["train_r2"]
+    assert validation.evaluate_spec(SPEC, fit_df, relab, T_DUAN)["train_r2"] == base["train_r2"]
 
 
 def test_evaluate_spec_deterministic(sub_split):
     fit_df, eval_df = sub_split
     np.random.seed(1)
-    a = validation.evaluate_spec(SPEC, fit_df, eval_df, "duan")
+    a = validation.evaluate_spec(SPEC, fit_df, eval_df, T_DUAN)
     np.random.seed(2)
-    b = validation.evaluate_spec(SPEC, fit_df, eval_df, "duan")
+    b = validation.evaluate_spec(SPEC, fit_df, eval_df, T_DUAN)
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
 
 
@@ -167,7 +189,7 @@ def _fold_value(f):
 
 def test_three_validators_day_block_matches_whole_date_oracle(sub_all, sub_split, cut):
     tr, va = sub_split
-    res = validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)
+    res = validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)
     folds = common.day_block_folds(tr, 5)
     r2s, trs = [], []
     for f in range(5):
@@ -185,9 +207,9 @@ def test_three_validators_day_block_matches_whole_date_oracle(sub_all, sub_split
 def test_three_validators_day_block_is_deterministic_and_rng_free(sub_all, sub_split, cut):
     tr, va = sub_split
     np.random.seed(11)
-    a = validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)
+    a = validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)
     np.random.seed(12)
-    b = validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)
+    b = validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)
     assert json.dumps(a, sort_keys=True, default=float) == json.dumps(b, sort_keys=True, default=float)
 
 
@@ -203,7 +225,7 @@ def test_day_block_calls_never_share_a_date(sub_all, sub_split, cut, monkeypatch
         return real(spec, fit_df, eval_df, *a, **k)
 
     monkeypatch.setattr(validation, "evaluate_spec", spy)
-    validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)
+    validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)
     disjoint = [c for c in calls if not (c[0] & c[1])]
     if calls:       # the spy sees nothing when the module uses private helpers; the oracle test above covers that case
         assert len(disjoint) >= 5 + 1                                  # 5 day-block folds + the chronological split
@@ -212,7 +234,7 @@ def test_day_block_calls_never_share_a_date(sub_all, sub_split, cut, monkeypatch
 # ---------------------------------------------------------------- seeded + chronological
 def test_three_validators_seeded_and_chrono_match_oracle(sub_all, sub_split, cut):
     tr, va = sub_split
-    res = validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)
+    res = validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)
     seeded = _oracle(SPEC, tr, va, "duan")
     for k in ("train_r2", "train_rmse", "r2", "rmse"):
         assert res["seeded"][k] == pytest.approx(seeded[k], abs=TOL, rel=TOL), k
@@ -237,13 +259,13 @@ def test_chrono_score_ignores_rows_on_or_after_the_cut_only_for_training(sub_all
     row on or after the cut is never in the chronological training part (it is evaluated, not fitted)."""
     tr, va = sub_split
     cut_ts = pd.Timestamp(cut)
-    base = validation.three_validators(SPEC, tr, va, sub_all, cut, "duan", k=5)["chrono"]
+    base = validation.three_validators(SPEC, tr, va, sub_all, cut, T_DUAN, k=5)["chrono"]
     ref = _oracle(SPEC, sub_all[sub_all["dteday"] < cut_ts], sub_all[sub_all["dteday"] >= cut_ts], "duan")
     assert base["train_r2"] == pytest.approx(ref["train_r2"], abs=TOL)
     corrupted = sub_all.copy()
     late_mask = corrupted["dteday"] >= cut_ts
     corrupted.loc[late_mask, "temp"] = 0.0
-    out = validation.three_validators(SPEC, tr, va, corrupted, cut, "duan", k=5)["chrono"]
+    out = validation.three_validators(SPEC, tr, va, corrupted, cut, T_DUAN, k=5)["chrono"]
     assert out["train_r2"] == base["train_r2"]                         # training part untouched by late rows
     assert out["r2"] != base["r2"]
 
@@ -254,7 +276,7 @@ FRACS = [0.25, 0.5, 1.0]
 
 def test_learning_curve_subsets_are_nested_prefixes_of_one_permutation(sub_split, seed):
     tr, va = sub_split
-    rows = validation.learning_curve(SPEC, tr, va, FRACS, seed, "duan")
+    rows = validation.learning_curve(SPEC, tr, va, FRACS, seed, T_DUAN)
     assert len(rows) == len(FRACS)
     dates = np.sort(tr["dteday"].unique())
     perm = np.random.default_rng(seed).permutation(dates)              # SPEC: rng(seed) permutation of the training dates
@@ -274,10 +296,10 @@ def test_learning_curve_subsets_are_nested_prefixes_of_one_permutation(sub_split
 
 def test_learning_curve_deterministic_and_seed_dependent(sub_split, seed):
     tr, va = sub_split
-    a = validation.learning_curve(SPEC, tr, va, FRACS, seed, "duan")
-    b = validation.learning_curve(SPEC, tr, va, FRACS, seed, "duan")
+    a = validation.learning_curve(SPEC, tr, va, FRACS, seed, T_DUAN)
+    b = validation.learning_curve(SPEC, tr, va, FRACS, seed, T_DUAN)
     assert json.dumps(a, sort_keys=True, default=float) == json.dumps(b, sort_keys=True, default=float)
-    c = validation.learning_curve(SPEC, tr, va, FRACS, seed + 1, "duan")
+    c = validation.learning_curve(SPEC, tr, va, FRACS, seed + 1, T_DUAN)
     assert [r["train_r2"] for r in a[:2]] != [r["train_r2"] for r in c[:2]]
     assert a[-1]["val_r2"] == pytest.approx(c[-1]["val_r2"], abs=1e-12)     # the full set is seed free
 

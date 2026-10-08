@@ -235,6 +235,11 @@ def label_variant(group_by: list[str], p5cfg: dict, train_df, val_df, mats: dict
 
 # ----------------------------------------------------------------------------- step 8: retrospective
 
+def target_text(p1: dict) -> str:
+    """Name of the Phase 1 target, built from the artifact (transform family and exponent)."""
+    return f"{p1['target_transform']}-family target (exponent {p1['target_power']:g})"
+
+
 def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[dict]:
     """One row per phase built from the stored artifacts: what it consumed, its settings and its scores."""
     est, est_anchor = p3["estimates_target"], p3["estimates"]
@@ -243,7 +248,7 @@ def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[
     method_text = "; ".join(f"{m} lambda={methods[m]['lambda']:.3g} val_r2={methods[m]['val_r2']:.4f}"
                             for m in ("l2", "l1", "enet"))
     rows = [
-        {"phase": "P1 gradient descent", "consumed": "35 base columns + bias, log1p target",
+        {"phase": "P1 gradient descent", "consumed": f"35 base columns + bias, {target_text(p1)}",
          "hyperparameters": f"lr={p1['lr']:.3f}, {p1['iterations']} iterations", "n_features": p1["n_features"],
          "train_score": p1["train_r2"], "val_score": p1["val_r2"], "val_rmse": p1["val_rmse"], "extra": ""},
         {"phase": "P2 polynomial", "consumed": "P1 weights as the starting point",
@@ -257,7 +262,7 @@ def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[
          "extra": (f"target seeded/day-block/chrono = {est['seeded']['r2']:.3f}/{est['day_holdout']['r2']:.3f}/"
                    f"{est['chrono']['r2']:.3f}; anchor = {est_anchor['seeded']['r2']:.3f}/"
                    f"{est_anchor['day_holdout']['r2']:.3f}/{est_anchor['chrono']['r2']:.3f}")},
-        {"phase": "P4 regularization", "consumed": "P3 target design + 6 candidate columns",
+        {"phase": "P4 regularization", "consumed": "P3 target design + the held-back candidate columns",
          "hyperparameters": f"{method_text}; recommended {rec['method']} lambda={rec['lambda']:.3g}",
          "n_features": len(p4["survivors_expanded"]) + 1, "train_score": None, "val_score": rec["val_r2"],
          "val_rmse": rec["val_rmse"], "extra": f"{len(p4['survivors_expanded'])} surviving columns from "

@@ -61,14 +61,27 @@ def mtime(path: str) -> float:
     return os.path.getmtime(os.path.join(ROOT, path))
 
 
+def sha256_file(path: str) -> str:
+    with open(os.path.join(ROOT, path), "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
+
+
 def stale(n: int) -> bool:
-    """True when artifacts/pN.json is missing or older than any existing input."""
+    """True when artifacts/pN.json is missing, was built from another config.yaml or another upstream artifact
+    (compared by content hash, not by file time: re-running an upstream phase to the same bytes changes nothing),
+    or is older than a source file it depends on."""
     target = f"{ART}/p{n}.json"
     if not os.path.exists(os.path.join(ROOT, target)):
         return True
+    with open(os.path.join(ROOT, target), encoding="utf-8") as handle:
+        artifact = json.load(handle)
+    if artifact.get("config_sha256") != sha256_file("config.yaml"):
+        return True
     upstream, own = PHASE_DEPS[n]
-    inputs = EVERY_PHASE + own + ([f"{ART}/{upstream}.json"] if upstream else [])
-    return any(os.path.exists(os.path.join(ROOT, p)) and mtime(p) > mtime(target) for p in inputs)
+    if upstream and artifact.get("upstream_sha256") != sha256_file(f"{ART}/{upstream}.json"):
+        return True
+    sources = [p for p in EVERY_PHASE + own if p.endswith(".py")]
+    return any(os.path.exists(os.path.join(ROOT, p)) and mtime(p) > mtime(target) for p in sources)
 
 
 def build_phase(n: int) -> int:

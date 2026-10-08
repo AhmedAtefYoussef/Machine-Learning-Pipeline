@@ -13,12 +13,24 @@
 # 4. *Degree.* We expect the curve of validation R² against degree to flatten after degree 2 or 3; degree 4 should not beat degree 3 by more than 0.001. Our rule, fixed in advance, is to take the smallest degree within 0.001 of the best.
 # 5. *Optimisation.* Powers of a variable are correlated with each other and the interaction columns are correlated with the hour dummies, so the expanded design is worse conditioned. We expect roughly ten times more iterations than Phase 1 (a few thousand) at the same "half the bound" learning rate, still with a monotone loss.
 # 6. *Fit quality.* Training and validation R² should stay within about 0.01 of each other: 60–70 weights are still few for 8,708 rows. If so, this model is more likely under-fit than over-fit, which is the question for Phase 3.
+
+# %% [markdown]
+# ## Expectation — Phase 2, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged.*
+#
+# 1. *The chain* must hold exactly as before: first Phase 2 loss equal to the last Phase 1 loss.
+# 2. *Choices.* We expect the same answers as in the first run: the working-day × hour block carries almost all of the
+#    gain, degree 3, powers of `temp` only. If the degree or the columns change, it will be by a margin near our 0.001
+#    tolerance.
+# 3. *Accuracy.* About 0.918 on validation (0.910 with the log target).
+
 # %% [markdown]
 # ### Justification: initialisation from Phase 1
 # The expanded design keeps the 35 Phase 1 columns in the same positions and with the Phase 1 scaler (read from `artifacts/p1.json`, not refitted). Each new column gets its own training mean and standard deviation. The longer weight vector is the Phase 1 vector with zeros in the new positions. A zero weight switches a column off, so the expanded model starts as exactly the Phase 1 model: its first loss must equal Phase 1's last loss. The cell below checks this to 1e-9. Starting there instead of at random also means gradient descent only has to learn the correction that the new columns allow.
 
 # %%
-p2 = phase("p2", p2mod.run, upstream="p1")   # loads artifacts/p2.json, or fits Phase 2
+p2 = phase("p2", p2mod.run, upstream="p1", live=True)   # reads artifacts/p1.json and fits Phase 2, here and now
 difference = p2["init_loss"] - p1["train_loss_final"]
 print("Phase 1 final training loss :", repr(p1["train_loss_final"]))
 print("Phase 2 initial loss        :", repr(p2["init_loss"]))
@@ -100,5 +112,7 @@ show(plots.plot_residual_profile(p1, p2))
 # - Optimisation was much easier than we feared: {{p2.iterations}} iterations, not thousands. We had expected the new columns to be strongly correlated with the old ones, but because we build powers and products from standardised columns the condition number only rose to {{p2.condition_number:.0f}}.
 # - Humidity powers were not worth keeping ({{p2.power_col_sweep.0.val_r2:.4f}} → {{p2.power_col_sweep.1.val_r2:.4f}}); we had expected humidity to need a curve as much as temperature does.
 # - Training and validation R² are almost identical. A model that fits unseen rows as well as its own training rows is not over-fit; the open question for Phase 3 is whether it is still too simple.
+#
+# **Second pass.** With the power target the choices are the ones we expected: the same block, the same degree, powers of `temp` only, and validation R² {{p2.val_r2:.4f}} against {{first_pass.p2.val_r2:.4f}} with the log target. One detail differs from the first pass: the degree curve is not quite as flat before degree 3 ({{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3), so the cube of temperature earns its place more clearly now.
 #
 # **Handed to Phase 3:** degree {{p2.degree}} and the expanded feature list in `artifacts/p2.json`.

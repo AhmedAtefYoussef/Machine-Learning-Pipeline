@@ -95,7 +95,7 @@ def plot_paths(p4: dict, method: str):
     ax.axvline(p4["methods"][method]["lambda"], color="k", ls="--", lw=1, label="chosen alpha")
     ax.set_xscale("log")
     ax.set_xlabel("penalty alpha (log scale)")
-    ax.set_ylabel("coefficient (standardised column, log1p(cnt) scale)")
+    ax.set_ylabel("coefficient (standardised column, transformed-target scale)")
     ax.set_title(f"Coefficient paths, {LABELS[method]}")
     ax.legend(loc="best", fontsize=8, ncol=2)
     ax.grid(alpha=0.3)

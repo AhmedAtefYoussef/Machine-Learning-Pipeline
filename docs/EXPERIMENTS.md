@@ -32,3 +32,32 @@ config_sha: c897b1d5e3ec (single blocks), c2c159424b88 (combinations), fe4170b89
 expected_gain: +0.010 to +0.020 on held-out days, >= 0 on chrono; noise: fold sd 0.011, bootstrap half-width 0.009   cost: 40 s   risk: medium (ladder extended after seeing residuals)
 result: seeded / held-out days (paired se) / chrono deltas against C5: weather detail + wd_x_hr_x_temp +0.0073 / +0.0101 (0.0011) / +0.0203; lagged weathersit +0.0041 / +0.0107 (0.0019) / +0.0107; both (33 columns) +0.0080 [+0.0031, +0.0136] / +0.0169 (0.0025, 5 of 5 folds) / +0.0256, giving 0.9397 / 0.9431 / 0.9185. Rejected: sqrt trend (chrono -0.011), yr for trend (days -0.006), hour x year (chrono -0.016), day type x time (chrono -0.029), free holiday profile (days -0.006), rain x day part, hour x weathersit (within noise). holiday x hour changes nothing (already in the span: the C5 design is rank deficient). Weighted log fit +0.0081 and Poisson IRLS +0.0104 on held-out days (diagnostic, not compliant).
 decision: defer to chief: adopt "C5 + weather detail + lagged weathersit" as one new ladder level if the P3-P5 re-run is accepted; after it the held-out-day score is within 0.002 of the ceiling (stop condition b)     adr: needs a superseding ADR (ladder extended after Phase 3)
+
+# EXP-B1 Loss scale diagnostic on the final v1 design (exp/loss_scale/diag.py -> diag.json; chief)
+hypothesis: fitting on log-bikes costs R2 on bikes      category: modeling
+compliance: diagnostic only (Poisson and bike-scale least squares with log link are not in the chain)      looks at seeded validation: 3
+result: seeded / held-out days / chrono: log 0.9388 / 0.9426 / 0.9139; Poisson 0.9444 / 0.9483 / 0.9236; bike-scale least squares 0.9445 / 0.9487 / 0.9380.
+decision: gain is real; look for it inside linear regression (EXP-B2)     adr: 017
+
+# EXP-B2 Target exponent (exp/v2/e1_target.py, e3_ceiling.py -> e1_target.json, e3_ceiling.json; chief)
+hypothesis: a milder power transform than the log recovers the bike-scale gain within ordinary least squares      category: modeling
+compliance: yes (target preparation is a Phase 1 choice)      looks at seeded validation: about 40
+result: target design, lam 0.1 against the log: seeded +0.0023, held-out days +0.0036 (paired se 0.0005, 5 of 5 folds), chrono +0.0237; best exponent 0.25-0.3 for the Phase 1 design, 0.1-0.2 for Phase 2, 0.1 for the target; ladder under lam 0.1 still selects C6.
+decision: adopt lam = 0.1 for the whole chain     adr: 017
+
+# EXP-B3 Twenty further input-only feature blocks, greedy forward pass (exp/v2/e2_features.py -> e2_features_0.1.json; chief)
+hypothesis: some weather, daylight, lag or time-level structure is still missing      category: modeling
+compliance: yes for all blocks (inputs only)      looks at seeded validation: about 25
+result: no weather/hour block moves held-out days by more than 0.0007; year-month levels +0.0030 held-out days but -0.054 chrono; quarterly trend hinges +0.0027 but -0.45 chrono; greedy pass accepts nothing.
+decision: reject all     adr: 018
+
+# EXP-B4 Observation weights (exp/v2/e4_weights.py -> e4_weights.json; chief)
+hypothesis: weighted least squares on the power target recovers the rest of the bike-scale gain      category: modeling
+compliance: doubtful (changes the loss of the final model)      looks at seeded validation: 10
+result: +0.0025 seeded [0.0000, 0.0049], +0.0025 held-out days (paired se 0.0014, 4 of 5 folds), chrono +0.0008.
+decision: reject (below the two-standard-error rule)     adr: 018
+
+# EXP-B5 Stronger diagnostic ceilings (exp/v2/e3_ceiling.py, e5_classifier.py; chief; H13: never in the chain)
+result: regression tree model with Poisson loss: 0.966 seeded / 0.950 held-out days / 0.902 chrono. Classifier tree model: ROC-AUC 0.901 on the Phase 5 label (logistic 0.886).
+decision: stop condition (b): the linear chain with lam 0.1 is within about 0.004 of the ceiling on held-out days     adr: 018
+
