@@ -13,6 +13,18 @@
 # 4. *Degree.* We expect the curve of validation R² against degree to flatten after degree 2 or 3; degree 4 should not beat degree 3 by more than 0.001. Our rule, fixed in advance, is to take the smallest degree within 0.001 of the best.
 # 5. *Optimisation.* Powers of a variable are correlated with each other and the interaction columns are correlated with the hour dummies, so the expanded design is worse conditioned. We expect roughly ten times more iterations than Phase 1 (a few thousand) at the same "half the bound" learning rate, still with a monotone loss.
 # 6. *Fit quality.* Training and validation R² should stay within about 0.01 of each other: 60–70 weights are still few for 8,708 rows. If so, this model is more likely under-fit than over-fit, which is the question for Phase 3.
+
+# %% [markdown]
+# ## Expectation — Phase 2, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged.*
+#
+# 1. *The chain* must hold exactly as before: first Phase 2 loss equal to the last Phase 1 loss.
+# 2. *Choices.* We expect the same answers as in the first run: the working-day × hour block carries almost all of the
+#    gain, degree 3, powers of `temp` only. If the degree or the columns change, it will be by a margin near our 0.001
+#    tolerance.
+# 3. *Accuracy.* About 0.918 on validation (0.910 with the log target).
+
 # %% [markdown]
 # ### Justification: initialisation from Phase 1
 # The expanded design keeps the 35 Phase 1 columns in the same positions and with the Phase 1 scaler (read from `artifacts/p1.json`, not refitted). Each new column gets its own training mean and standard deviation. The longer weight vector is the Phase 1 vector with zeros in the new positions. A zero weight switches a column off, so the expanded model starts as exactly the Phase 1 model: its first loss must equal Phase 1's last loss. The cell below checks this to 1e-9. Starting there instead of at random also means gradient descent only has to learn the correction that the new columns allow.

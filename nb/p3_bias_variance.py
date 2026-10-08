@@ -14,6 +14,23 @@
 # 5. *The time question.* We expect the seeded estimate and the held-out-day estimate to be almost equal (within 0.005). Our model has no way to memorise a particular day, so sharing days between training and validation should hardly help it. The chronological estimate should be clearly lower, by 0.04–0.08, because the model has to extrapolate a growth trend into six months it has never seen, having observed July–December only once.
 # 6. *Which estimate to trust.* For the hidden test set, which is the 20th of each month and so lies inside the observed period, the held-out-day estimate is the right one. For genuinely future months the chronological estimate is the honest one. We expect the diagnosis to stay "bias first, variance only at the top of the ladder" under all three, but the chronological split should prefer a simpler model than the seeded split does, especially disliking the blocks that let the trend vary by hour.
 
+
+# %% [markdown]
+# ## Expectation — Phase 3, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged; the ladder now has
+# eleven levels because level C6 was added during the first pass.*
+#
+# 1. *Diagnosis.* Unchanged in kind: Phase 2 under-fit, target at level C6, variance only at the top of the ladder.
+# 2. *The time question.* This is where we expect the real change. With the log target the chronological estimate of the
+#    target was about 0.91 against 0.94 on held-out days. A straight trend on the log scale is exponential growth; on the
+#    λ = 0.1 scale it grows more slowly, so the overshoot in the later months should shrink and the chronological
+#    estimate should rise to about 0.93 to 0.94, almost closing the gap.
+# 3. *Held-out days.* A smaller gain, about +0.003 to +0.004 for the target.
+# 4. *Exponent check.* A new table scores the target design for several exponents. We expect a flat optimum around 0.1
+#    on validation and held-out days, with 0.15 to 0.2 slightly better chronologically. If the best exponent were far
+#    from the one Phase 1 used, our chain would be inconsistent and we would have to start again.
+
 # %% [markdown]
 # ### Justification: what we varied
 #

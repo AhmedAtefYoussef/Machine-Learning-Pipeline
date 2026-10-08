@@ -14,6 +14,17 @@
 # 5. *Column verdicts we predict.* Useful: `hr`, `temp`, `hum`, `weathersit`, and the day-type information. Redundant: `atemp` (carried by `temp`), `season` and `mnth` (carried by the day-of-year terms from `dteday`), `yr` and `instant` (carried by the trend from `dteday`), and at least one of `weekday` / `workingday` / `holiday`, since `workingday` is an exact function of the other two. We are least sure about `windspeed` and `holiday`: their effect may be too small to separate from noise, in which case the honest verdict is "uninformative".
 # 6. *Surprise we are watching for.* If dropping a column we believe to be useful costs nothing, another column is carrying its information and we have the labels the wrong way round.
 
+
+# %% [markdown]
+# ## Expectation — Phase 4, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged.*
+#
+# 1. *Regularization* should again be insurance: three methods tied within noise, tiny penalties, Lasso not sparse.
+# 2. *Verdicts* should be the same as in the first pass, with one candidate for a flip: `windspeed` was useful by a
+#    small margin and could fall back to uninformative.
+# 3. *Final model.* About 0.941 on validation, 0.946 on held-out days and 0.93 to 0.94 chronologically.
+
 # %% [markdown]
 # ### Justification: search ranges and strategy
 #

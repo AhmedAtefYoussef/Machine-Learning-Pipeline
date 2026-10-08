@@ -17,6 +17,17 @@
 # 4. *Operating threshold.* Missing a high-demand hour (empty docks) is worse than a false alarm (a few idle bikes). With the same 3:1 cost ratio as the Phase 1 bonus, the cost-minimising cut-off for a calibrated model is 1/(1+3) = 0.25, not 0.5. We expect recall to rise sharply and precision to fall at 0.25, and the validation cost curve to have its minimum near 0.25 if our probabilities are well calibrated.
 # 5. *Features.* Hour dummies should matter little on their own here, because the label is already relative to the hour; temperature, humidity, weather situation and the day-of-year terms should carry the model.
 
+
+# %% [markdown]
+# ## Expectation — Phase 5, second pass
+#
+# *Written before re-running the chain with the power target (λ = 0.1). The cell above is unchanged.*
+#
+# The label and the classifier do not use the regression target, so Phase 5 changes only if the surviving feature list
+# changes. We expect the same class balance and a ROC-AUC within 0.005 of the first pass (0.886). A tree model that we
+# tried outside the pipeline reaches about 0.90 on the same label, so we do not expect the logistic model to go higher
+# than that.
+
 # %% [markdown]
 # ### Justification: label rule
 #

@@ -13,6 +13,32 @@
 # 4. *Train vs validation.* With 36 weights and 8,708 rows we expect almost no gap (under 0.02).
 # 5. *Back-transform.* We will try no correction, Duan's smearing factor and a least-squares factor. The textbook says Duan should help; we suspect it will not, because the large log-residuals sit in quiet night hours while the factor inflates every prediction, including the peaks that dominate R².
 # 6. *Bonus (asymmetric cost).* When under-prediction costs three times as much, the fitted predictions should move up. We expect the share of under-predicted validation hours to fall from about one half to about one third or less, at the price of a higher plain RMSE.
+
+# %% [markdown]
+# ## Expectation — Phase 1, second pass
+#
+# *Written before re-running the chain with a new target (see the git history). The cell above is our original
+# expectation and is unchanged.*
+#
+# **What changes.** Our first complete run used `log1p(cnt)` as the target. Its Phase 3 analysis, and the exploration we
+# did afterwards (`exp/v2/`), showed that the log is too strong: it makes an error of a few bikes at 3 am count as much
+# as an error of a hundred bikes at 5 pm, while R² on bikes is decided by the busy hours. We therefore re-run everything
+# with a milder transform of the same family, z = ((cnt + 1)^λ − 1) / λ with λ = 0.1 (λ → 0 is the log, λ = 1 is the
+# raw count). Nothing else in Phase 1 changes: same 35 columns, same gradient descent, same learning-rate rule.
+#
+# **What we expect.**
+# 1. *Accuracy.* Validation R² should rise from about 0.72 to about 0.735. For this small model alone an even larger
+#    exponent (0.25 to 0.3) would score a little higher; we knowingly keep 0.1 because the exponent has to be fixed once
+#    for the whole chain and the richer models of the later phases prefer about 0.1. The cell that compares exponents
+#    should show exactly this.
+# 2. *Optimisation.* Unchanged. The design matrix is the same, so λ_max, the stability bound and the learning rate are
+#    identical, and the iteration count should again be a few hundred.
+# 3. *Back-transform.* The least-squares factor should move closer to 1 than the 1.04 of the log model, because a milder
+#    transform distorts the mean less. Duan's factor is defined for the log only, so we now compare "no factor" and the
+#    least-squares factor.
+# 4. *Bonus.* The asymmetric model should still move predictions up and cut the share of under-predicted hours to about
+#    0.3. The plain model's own share of under-predictions should be closer to one half than the 0.52 of the log model.
+
 # %% [markdown]
 # ### Justification: representation
 # - **Target.** We model `log1p(cnt)`. Counts are right-skewed and their spread grows with their level, and effects multiply (a rainy rush hour loses a share of its riders, not a fixed number). R² is still computed on bikes after transforming back.
