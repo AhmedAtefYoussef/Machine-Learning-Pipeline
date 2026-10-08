@@ -113,4 +113,6 @@ show(plots.plot_residual_profile(p1, p2))
 # - Humidity powers were not worth keeping ({{p2.power_col_sweep.0.val_r2:.4f}} → {{p2.power_col_sweep.1.val_r2:.4f}}); we had expected humidity to need a curve as much as temperature does.
 # - Training and validation R² are almost identical. A model that fits unseen rows as well as its own training rows is not over-fit; the open question for Phase 3 is whether it is still too simple.
 #
+# **Second pass.** With the power target the choices are the ones we expected: the same block, the same degree, powers of `temp` only, and validation R² {{p2.val_r2:.4f}} against {{first_pass.p2.val_r2:.4f}} with the log target. One detail differs from the first pass: the degree curve is not quite as flat before degree 3 ({{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3), so the cube of temperature earns its place more clearly now.
+#
 # **Handed to Phase 3:** degree {{p2.degree}} and the expanded feature list in `artifacts/p2.json`.
