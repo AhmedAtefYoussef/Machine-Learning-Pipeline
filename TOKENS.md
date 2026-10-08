@@ -19,5 +19,12 @@
 | 4 | verifier final gate | sonnet | 32 | 138k | 0 failures, 3 warns (all addressed) |
 | 4 | independent final audit | opus | 39 | 274k | PASS WITH FIXES; fixes 2-7 applied, fix 1 (roster) is the user's |
 
+| 5 | second pass: coder S-8-01 power target + rebuild | sonnet | 71 | 230k | done; exponent 0 reproduces the first pass exactly; Phase 4 runtime 1786 s |
+| 5 | second pass: scribe WALKTHROUGH update | sonnet | 34 | 193k | 414 lines |
+| 5 | second pass: independent compliance audit | opus | 37 | 276k | PASS WITH FIXES; no rule broken; fixes applied |
+| 5 | second pass: verifier gate | sonnet | 26 | 119k | 39 pass, 1 fail (stale Phase 3 message in the notebook; fixed and rebuilt), 2 warns |
+
 ## Conclusion (from this ledger; the `explain-usage` skill was not run)
 Subagents used about 2.9M tokens in 17 runs. The largest items were not code but reading-heavy Opus passes (final audit 274k, scribe 264k, analyst 195k) and the Phase 4 coder, which ran three times (180k + 27k + 114k) because the Phase 4 design changed twice after first results (ADR-014, ADR-016). Next time: settle the survivor/final-model logic in a cheap closed-form pilot before specifying Phase 4, give Phase 4 a fast mode so a re-run does not cost 20 minutes, and hand the scribe a digest instead of the source tree.
+
+Second pass (2026-10-08): the exploration itself (E1-E5) was done by the chief with closed-form scripts in `exp/v2/` at no subagent cost; the expensive items were again the full rebuild and the fresh-context audit. One avoidable cost: a 30-minute Phase 4 re-run triggered by file times after the auditor re-ran Phases 1-3 to identical bytes; `run.py` now compares content hashes.

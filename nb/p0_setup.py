@@ -161,7 +161,9 @@ def phase(name, run_fn, upstream=None, live=False):
     with open(path, "rb") as handle:
         stored_bytes = handle.read()
     stored = json.loads(stored_bytes)
-    fresh = run_fn(CFG)                                   # the live run; it rewrites artifacts/<name>.json
+    run_fn(CFG)                                           # the live run; it rewrites artifacts/<name>.json
+    with open(path, "rb") as handle:
+        fresh = json.loads(handle.read())                 # what the live run wrote
     same_config = stored.get("config_sha256") == fresh.get("config_sha256")
     same_upstream = stored.get("upstream_sha256") == fresh.get("upstream_sha256")
     if not (same_config and same_upstream):

@@ -1,0 +1,257 @@
+{
+ "gate": "final-v2",
+ "deterministic": {
+  "verify-fast": "256 passed; leak_scan 30 files 0 findings; chain_check 5/5; req_check 15 verified",
+  "submission_check": "0 failures 0 warnings",
+  "number_trace": "0 untraced",
+  "report_pages": 5,
+  "notebook": "128 cells, 0 error outputs, 0 TODO, 0 unresolved placeholders",
+  "reproducibility": "p1,p2,p3,p5,predict,bonus_control rerun: artifacts and submission clean; run.py p5 reports p1..p5 up to date"
+ },
+ "results": [
+  {
+   "id": "R1",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json..p5.json",
+   "note": "Five phases in order; artifacts p1-p5 and notebook sections present."
+  },
+  {
+   "id": "R2",
+   "verdict": "pass",
+   "evidence_path": "rush_hour.ipynb cells 38,81,105,127",
+   "note": "Chain asserts executed: init-loss equality, P4 on P3 hash and level, P5 features within survivors."
+  },
+  {
+   "id": "R3",
+   "verdict": "pass",
+   "evidence_path": "nb/p*.py; git 2ef385f,133ca8a,b5114d4,3f64bce",
+   "note": "Original and second-pass Expectation cells unchanged, precede artifacts; Outcome per phase; 0 TODO."
+  },
+  {
+   "id": "R4",
+   "verdict": "pass",
+   "evidence_path": "src/common.py:118",
+   "note": "Seed recomputed 44615 from config IDs; one train_test_split; one chronological cut."
+  },
+  {
+   "id": "R5",
+   "verdict": "pass",
+   "evidence_path": "tools/leak_scan.py",
+   "note": "leak_scan 0 findings; fits on train rows only; load_test only in predict and p6."
+  },
+  {
+   "id": "R6",
+   "verdict": "pass",
+   "evidence_path": "src/common.py",
+   "note": "Only data/*.csv read; no external data."
+  },
+  {
+   "id": "R7",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json",
+   "note": "Own GD; lr, stop, sweep, oracle present and justified."
+  },
+  {
+   "id": "R8",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p2.json",
+   "note": "P2 init loss equals P1 final; degree and block justified."
+  },
+  {
+   "id": "R9",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p3.json",
+   "note": "Ladder, estimates, diagnosis, target complexity present; exponent check consistent."
+  },
+  {
+   "id": "R10",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p4.json",
+   "note": "L1, L2, ENet compared; per-column verdicts with numbers; tie-break disclosed."
+  },
+  {
+   "id": "R11",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p5.json",
+   "note": "Label from train thresholds; survivors only; acc, F1, AUC reported."
+  },
+  {
+   "id": "R12",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json p1.bonus",
+   "note": "Asymmetric GD, gradient test at power 0 and 0.1; bonus control artifact."
+  },
+  {
+   "id": "R13",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1-p5.json",
+   "note": "R2 and RMSE for P1-P4; acc, F1, AUC for P5."
+  },
+  {
+   "id": "R14",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p6.json",
+   "note": "p6.model equals p4.recommended; submission_check 0 failures; reruns byte-identical."
+  },
+  {
+   "id": "R15",
+   "verdict": "warn",
+   "evidence_path": "rush_hour.ipynb cell 53",
+   "note": "0 errors, 5 PDF pages, 0 untraced numbers; Phase 3 cell prints 'replaced' instead of live-compare difference 0 (see S7)."
+  },
+  {
+   "id": "H1",
+   "verdict": "pass",
+   "evidence_path": "src/common.py:118",
+   "note": "One train_test_split call; seed 44615 recomputed from sorted IDs in config.yaml."
+  },
+  {
+   "id": "H2",
+   "verdict": "pass",
+   "evidence_path": "src/predict.py:103",
+   "note": "Test read only via load_test (predict, p6 section); Design, scaler, Target.factor fit on fit rows."
+  },
+  {
+   "id": "H3",
+   "verdict": "pass",
+   "evidence_path": "src/common.py",
+   "note": "No external data."
+  },
+  {
+   "id": "H4",
+   "verdict": "pass",
+   "evidence_path": "src/gd.py",
+   "note": "No sklearn import in gd, gd_asym, poly, p1, p2."
+  },
+  {
+   "id": "H5",
+   "verdict": "pass",
+   "evidence_path": "tools/chain_check.py",
+   "note": "chain_check 5/5; hashes p2..p6 match upstream files."
+  },
+  {
+   "id": "H6",
+   "verdict": "pass",
+   "evidence_path": "src/regularization.py",
+   "note": "sklearn appears only as train_test_split in common.py; L1, L2, ENet own code."
+  },
+  {
+   "id": "H7",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p5.json",
+   "note": "p5.features subset of p4.survivors_expanded (asserted in notebook)."
+  },
+  {
+   "id": "H8",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p6.json",
+   "note": "p6.model equals p4.recommended (l1, same lambda and ratio)."
+  },
+  {
+   "id": "H9",
+   "verdict": "pass",
+   "evidence_path": "git log nb/",
+   "note": "Expectation cells precede artifacts, text unchanged (only trailing blank lines differ)."
+  },
+  {
+   "id": "H10",
+   "verdict": "pass",
+   "evidence_path": "report/report.pdf",
+   "note": "5 pages; number_trace 0 untraced; notebook 0 error outputs."
+  },
+  {
+   "id": "H11",
+   "verdict": "pass",
+   "evidence_path": "tools/leak_scan.py",
+   "note": "No tuning on test; test never split or shuffled."
+  },
+  {
+   "id": "H12",
+   "verdict": "pass",
+   "evidence_path": "nb/p0_setup.py",
+   "note": "Config cell at top; readable code; walkthrough doc present."
+  },
+  {
+   "id": "H13",
+   "verdict": "pass",
+   "evidence_path": "src/, nb/",
+   "note": "No import from exp/; first_pass.json and diagnostics.json read by no phase module (grep)."
+  },
+  {
+   "id": "S1",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p1.json",
+   "note": "p1.target_power equals config.yaml p1.target_power (0.1)."
+  },
+  {
+   "id": "S2",
+   "verdict": "pass",
+   "evidence_path": "src/phases/p2.py..p4.py, predict.py",
+   "note": "Every later phase builds Target.from_artifact(p1); bonus_control too."
+  },
+  {
+   "id": "S3",
+   "verdict": "pass",
+   "evidence_path": "artifacts/p3.json",
+   "note": "p3.target_power_consistent true."
+  },
+  {
+   "id": "S4",
+   "verdict": "pass",
+   "evidence_path": "tests/test_common.py:95",
+   "note": "test_target_power_zero_is_log1p_and_small_power_approaches_it; also eta_cap power 0 and gd_asym power 0.0 gradient test."
+  },
+  {
+   "id": "S5",
+   "verdict": "pass",
+   "evidence_path": "tools/ run.py p5",
+   "note": "Reruns of p1,p2,p3,p5,predict,bonus_control leave artifacts and submission clean; run.py p5 builds nothing."
+  },
+  {
+   "id": "S6",
+   "verdict": "pass",
+   "evidence_path": "rush_hour.ipynb",
+   "note": "Each phase: original Expectation, second-pass Expectation, Outcome; 0 TODO, 0 '{{'; P4 and P5 loaded cached."
+  },
+  {
+   "id": "S7",
+   "verdict": "fail",
+   "evidence_path": "rush_hour.ipynb cell 53",
+   "note": "Phase 3 prints 'stored artifact belonged to another configuration and was replaced', not live-compare difference 0. P1, P2 print 0.0e+00. Artifact itself reproduces byte-identical."
+  },
+  {
+   "id": "S8",
+   "verdict": "pass",
+   "evidence_path": "git 3f64bce, 2d988eb",
+   "note": "Second-pass Expectation cells byte-identical to 3f64bce, an ancestor of 2d988eb, the first second-pass artifacts."
+  },
+  {
+   "id": "S9",
+   "verdict": "pass",
+   "evidence_path": "report/report.md",
+   "note": "Tie-break stated, Lasso also best on validation; 0.2 labelled empirical next to theoretical 0.25."
+  },
+  {
+   "id": "S10",
+   "verdict": "pass",
+   "evidence_path": "nb/p0_setup.py:222",
+   "note": "Setup cell discloses pilot fits and second-pass forecasts close to outcomes; report line 9 separates train fits from validation tuning."
+  },
+  {
+   "id": "S11",
+   "verdict": "pass",
+   "evidence_path": "report/report.md",
+   "note": "12 numbers matched artifacts incl. first_pass 0.718/0.696 and diagnostics 0.016/20 groups."
+  },
+  {
+   "id": "S12",
+   "verdict": "warn",
+   "evidence_path": "git status",
+   "note": "TOKENS.md shows modified in working tree (not by verifier); ruff 35 non-blocking lint errors remain."
+  }
+ ],
+ "open_items": [
+  "S7: rerun `python run.py nb` (chief; p4/p5 load cached) so Phase 3 prints live-compare difference 0; stale output only, artifact reproduces.",
+  "S12: TOKENS.md modified in working tree, origin unknown; ruff lint non-blocking."
+ ]
+}

@@ -19,7 +19,8 @@ env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>` (all | 
 | 4 Regularization | second pass done; stage A (verdicts) -> selection (ADR-016) -> stage B (ADR-014); recommended Lasso |
 | 5 Logistic | second pass done |
 | 6 Submission, notebook, report | rebuilt; `python run.py verify` (strict) passes |
-| verifier gate / independent audit, second pass | see reports/verify/gate-final-v2.json and final-audit-v2.md |
+| independent audit, second pass | PASS WITH FIXES, no rule of the description broken; fixes applied (reports/verify/final-audit-v2.md) |
+| verifier gate, second pass | 39 pass, 1 fail fixed (notebook message), 15/15 requirements verified (reports/verify/gate-final-v2.json) |
 
 ## Rule and design changes made after first results (all disclosed in notebook and report)
 ADR-013 (P3 target: plateau rule instead of argmax) · ADR-014 (final model on survivors, stage B) · ADR-015 (one new ladder level after residual analysis) · ADR-016 (L1 selection after removing redundant columns) · ADR-017 (power target instead of log, second pass)
