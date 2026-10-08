@@ -158,7 +158,8 @@ def nb() -> int:
         return 1
     if tool("embed_bundle", "build/nb/p0_setup.py") != 0:   # project files travel inside the notebook (Colab)
         return 1
-    return tool("build_nb", "--src", "build/nb", "--execute", "--out", "rush_hour.ipynb", "--timeout", "3600")
+    code = tool("build_nb", "--src", "build/nb", "--execute", "--out", "rush_hour.ipynb", "--timeout", "3600")
+    return code or tool("polish_nb", "rush_hour.ipynb")   # presentation metadata, only after a clean build
 
 
 def report() -> int:

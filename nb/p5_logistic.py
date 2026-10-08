@@ -17,7 +17,6 @@
 # 4. *Operating threshold.* Missing a high-demand hour (empty docks) is worse than a false alarm (a few idle bikes). With the same 3:1 cost ratio as the Phase 1 bonus, the cost-minimising cut-off for a calibrated model is 1/(1+3) = 0.25, not 0.5. We expect recall to rise sharply and precision to fall at 0.25, and the validation cost curve to have its minimum near 0.25 if our probabilities are well calibrated.
 # 5. *Features.* Hour dummies should matter little on their own here, because the label is already relative to the hour; temperature, humidity, weather situation and the day-of-year terms should carry the model.
 
-
 # %% [markdown]
 # ## Expectation — Phase 5, second pass
 #
@@ -39,53 +38,32 @@
 # - **Limit.** A new year has no cell of its own; in use, the thresholds would have to be rolled forward, for example last year's cell scaled by the fitted trend.
 
 # %%
-# Phase 5 loads artifacts/p4.json for the surviving columns, builds the label with thresholds fitted on the training
-# rows, and fits our own logistic regression. A full run takes about three minutes (the l2 sweep and the label-rule
-# foils), so the cell loads the stored artifact when config and upstream are unchanged.
-import pandas as pd
-
-from src.common import cached_or_run, load_config, read_artifact
+# Phase 5 builds the high-demand label from training-row thresholds and fits our own logistic regression on the Phase 4 survivors; a full run takes about three minutes, so the stored artifact is loaded when nothing upstream changed.
+from src import plots_p5
+from src.logistic import fit_logistic, logloss, logloss_grad, sigmoid
 from src.phases import p5 as p5mod
-from src.plots_p5 import plot_calibration, plot_label_variants, plot_roc_pr, plot_threshold_curve
 
-p5 = phase("p5", p5mod.run, upstream="p4")  # writes artifacts/p5.json when it has to run
+p5 = phase("p5", p5mod.run, CFG, upstream="p4", recompute_all=RECOMPUTE_ALL)   # writes artifacts/p5.json when it has to run
 
 # %%
 # The chain: every feature of this phase must be a survivor of Phase 4.
-p4 = read_artifact("p4")
-survivors = set(p4["survivors_expanded"])
-assert set(p5["features"]) <= survivors, "Phase 5 uses a column that Phase 4 dropped"
-print("Phase 4 surviving columns :", len(survivors), "from original columns", p4["survivors_original"])
-print("Phase 5 features (no bias):", len(p5["features"]), "| all in the Phase 4 survivors: True")
-print("columns incl. bias        :", p5["n_features"], "| training rows:", p5["n_train"], "| validation rows:", p5["n_val"])
+rows = view.p5_chain_rows(p4, p5)
+assert all(passed for *_, passed in rows), "Phase 5 uses a column that Phase 4 dropped"
+display(view.checks(rows, "Phase 5 consumed Phase 4"))
+view.p5_design(p5)
 
 # %%
-# The label: high demand = cnt above the quantile of training hours with the same year, day type and hour.
-rule = p5["threshold_rule"]
-print("quantile:", rule["quantile"], "| cells:", rule["group_by"], "| fitted on:", rule["fitted_on"])
-print("number of cells:", rule["n_cells"], "| fewest training hours in a cell:", rule["min_cell_n"])
-thresholds = pd.DataFrame(rule["table"])
-peaks = thresholds[thresholds["hr"].isin([3, 8, 12, 17])].pivot_table(index=["yr", "workingday"], columns="hr",
-                                                                      values="threshold")
-print("\nthreshold (bikes) for four hours of the day:")
-print(peaks.round(1).to_string())
-balance = p5["class_balance"]
-print(pd.Series({"positives, train": balance["train"], "positives, validation": balance["val"],
-                 "positives, validation 2011": balance["val_by_year"]["0"],
-                 "positives, validation 2012": balance["val_by_year"]["1"],
-                 "majority-class accuracy": balance["majority_accuracy"]}).round(4).to_string())
+# The label: high demand means above a quantile of training hours with the same year, day type and hour.
+display(view.p5_thresholds(p5))
+view.p5_balance(p5)
 
 # %%
 # The foils: the same three models under three label rules. Only the last rule keeps the hour and the trend at chance.
-foils = pd.DataFrame(p5["label_variants"])
-foils["rule"] = foils["group_by"].map(lambda g: " + ".join(g) or "global")
-print(foils[["rule", "pos_train", "pos_val", "pos_val_2011", "pos_val_2012", "auc_hour_only", "auc_trend_only",
-             "auc_full", "acc_full_at_0_5", "majority_accuracy"]].round(3).to_string(index=False))
-print("foil fits that did not converge:", p5["foil_not_converged"])
+view.p5_label_variants(p5)
 
 # %%
-from src.plots import show  # displays a figure as a PNG in the notebook
-show(plot_label_variants(p5))
+# The foils as a plot.
+show(plots_p5.plot_label_variants(p5))
 
 # %% [markdown]
 # ### Justification: regularisation of the classifier
@@ -93,19 +71,12 @@ show(plot_label_variants(p5))
 # The classifier is our own logistic regression: gradient descent on the mean log-loss, with the step 1/(λ_max/4 + l2), which is the safe step for this loss because its curvature is at most a quarter of that of the squared loss. It uses only the Phase 4 survivors (the assert above). We add a small ridge term because, without any penalty, some weights of rarely active columns keep growing and gradient descent does not settle (the l2 = 0 row below stops at the iteration cap). The strength is chosen by validation ROC-AUC among {{p5.l2_sweep.0.l2}}, {{p5.l2_sweep.1.l2}}, {{p5.l2_sweep.2.l2}} and {{p5.l2_sweep.3.l2}}; ties within 0.0001 go to the larger value. Chosen: {{p5.l2}}.
 
 # %%
-# Ridge strength by validation ROC-AUC (ties within 1e-4 go to the larger l2); the cost of each fit is its iterations.
-sweep = pd.DataFrame(p5["l2_sweep"])
-print(sweep.round(5).to_string(index=False))
-print("\nchosen l2:", p5["l2"], "| iterations:", p5["iterations"], "| stop:", p5["stop_reason"],
-      "| learning rate:", round(p5["lr"], 4))
-print("gradient check (max relative error): at zeros", f"{p5['gradient_check_at_zeros']:.1e}",
-      "| halfway to the final weights", f"{p5['gradient_check_at_half']:.1e}")
+# The ridge strength of the classifier, chosen by validation ROC-AUC, and how the chosen fit ended.
+display(view.p5_l2_sweep(p5))
+display(view.p5_fit(p5))
 
 # %%
-# Our logistic regression (src/logistic.py): the log-loss, its gradient, and the fit, which reuses the Phase 1
-# gradient-descent loop.
-from src.logistic import fit_logistic, logloss, logloss_grad, sigmoid
-
+# Our logistic regression: the log-loss, its gradient, and the fit, which reuses the Phase 1 gradient-descent loop.
 show_source(sigmoid, logloss, logloss_grad, fit_logistic)
 
 # %% [markdown]
@@ -114,19 +85,9 @@ show_source(sigmoid, logloss, logloss_grad, fit_logistic)
 # About one hour in four is positive, so a model that always answers "normal" has an accuracy of {{p5.class_balance.majority_accuracy:.3f}}. Accuracy alone would flatter us, so we read it together with: **recall** (how many high-demand hours we catch, the operator's main concern), **precision** (how many alarms are real), **F1** (their balance), **ROC-AUC** (ranking quality, independent of the cut-off and of the class balance) and **PR-AUC** (ranking quality on the positive class, more demanding when positives are the minority). The task's three required numbers, accuracy, F1 and ROC-AUC, are reported at our operating cut-off; the others are shown beside them.
 
 # %%
-# Metrics on the validation rows at the cost threshold 1/(1+c), at 0.5 and at the F1-optimal grid threshold.
-columns = ["threshold", "accuracy", "f1", "precision", "recall", "roc_auc", "pr_auc", "cost"]
-table = pd.DataFrame({"at 1/(1+c)": p5["metrics"], "at 0.5": p5["metrics_at_0_5"],
-                      "at F1-optimal": p5["metrics_at_f1_opt"]}).T[columns]
-print(table.round(4).to_string())
-print("\nmajority-class accuracy:", round(p5["class_balance"]["majority_accuracy"], 4))
-print("validation ROC-AUC 95% interval:", round(p5["val_auc_bootstrap"]["lo"], 4), "to",
-      round(p5["val_auc_bootstrap"]["hi"], 4))
-print("training rows at 1/(1+c):", {k: round(v, 4) for k, v in p5["train_metrics"].items()})
-conf = p5["metrics"]["confusion"]
-print("\nconfusion matrix at 1/(1+c) (rows = truth):")
-print(pd.DataFrame([[conf["tn"], conf["fp"]], [conf["fn"], conf["tp"]]], index=["truly normal", "truly high"],
-                   columns=["predicted normal", "predicted high"]).to_string())
+# Validation metrics at the cost-based cut-off, at 0.5 and at the F1-optimal cut-off, and the confusion matrix.
+display(view.p5_metrics(p5))
+display(view.p5_confusion(p5))
 
 # %% [markdown]
 # ### Justification: operating threshold
@@ -134,23 +95,23 @@ print(pd.DataFrame([[conf["tn"], conf["fp"]], [conf["fn"], conf["tp"]]], index=[
 # A missed high-demand hour means empty docks and lost customers; a false alarm means a few idle bikes. We use the same 3:1 cost ratio as in the Phase 1 bonus. For a model whose probabilities are calibrated, raising an alarm is worth it when p × 3 > (1 − p) × 1, that is when p > 1/(1+3) = {{p5.t_cost}}. So our cut-off is {{p5.t_cost}}, not the habitual 0.5. The plot below checks the argument on the validation rows: the cost is lowest at {{p5.t_cost_empirical}} on our grid, and the calibration plot further down shows how far the probabilities can be trusted (largest gap {{p5.calibration_max_gap:.3f}}).
 
 # %%
-print("cost ratio (miss : false alarm):", p5["cost_ratio"], "| 1/(1+c) =", p5["t_cost"])
-print("grid threshold with the lowest validation cost:", p5["t_cost_empirical"],
-      "| with the highest F1:", p5["t_f1"])
-show(plot_threshold_curve(p5))
+# Where the alarm threshold should sit when a miss costs more than a false alarm.
+display(view.p5_threshold(p5))
+show(plots_p5.plot_threshold_curve(p5))
 
 # %%
-show(plot_roc_pr(p5))
+# How well the classifier ranks hours.
+show(plots_p5.plot_roc_pr(p5))
 
 # %%
-print("largest gap between predicted and observed share (bins with >= 30 rows):", round(p5["calibration_max_gap"], 4))
-show(plot_calibration(p5))
+# Whether the predicted probabilities can be trusted.
+display(view.p5_calibration(p5))
+show(plots_p5.plot_calibration(p5))
 
 # %%
-# What the classifier relies on: the largest standardised weights, and the share of sum|w| by original column.
-print(pd.DataFrame(p5["top_coefficients"]).round(3).to_string(index=False))
-print("\nshare of sum|w| by original column:")
-print(pd.Series(p5["coef_abs_share_by_column"]).round(3).to_string())
+# What the classifier relies on: the largest standardised weights, and the share of each original column.
+display(view.p5_top_coefficients(p5))
+view.p5_column_share(p5)
 
 # %% [markdown]
 # ### Pipeline retrospective
@@ -166,12 +127,8 @@ print(pd.Series(p5["coef_abs_share_by_column"]).round(3).to_string())
 # The thread through all five: on this data the errors come from bias. Every gain came from giving the linear model structure the data really has; the classical variance cures (higher degree, stronger penalty) did nothing measurable. **The regression model our pipeline recommends, and the one behind our submission, is the Phase 4 stage-B model.**
 
 # %%
-retro = pd.DataFrame(p5["retrospective"])
-print(retro[["phase", "n_features", "train_score", "val_score", "val_rmse"]].round(4).to_string(index=False))
-print()
-for _, row in retro.iterrows():
-    print(f"{row['phase']}: consumed {row['consumed']}; settings {row['hyperparameters']}" +
-          (f"; {row['extra']}" if row["extra"] else ""))
+# The five phases side by side, built from the five artifact files.
+view.p5_retrospective(p5)
 
 # %% [markdown]
 # ## Outcome — Phase 5
