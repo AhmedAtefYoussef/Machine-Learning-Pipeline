@@ -14,7 +14,9 @@ p1:
   max_iter: 50000
   sweep_fractions: [0.001, 0.01, 0.1, 0.5, 0.9, 1.05]
   sweep_max_iter: 5000
-  backtransform_candidates: [none, duan, ls]
+  target_power: 0.1                         # exponent of the target transform z = ((cnt+1)^power - 1)/power; 0 = log; fixed for the whole chain (ADR-017)
+  target_power_candidates: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0]   # exponents compared in the Phase 1 and Phase 3 tables
+  backtransform_candidates: [none, ls]      # Duan's smearing factor exists for power 0 only (listed with power 0 it still works)
   bonus: {k_under: 3.0, max_iter: 20000, tol_loss: 1.0e-10}
 p2:
   blocks: [wd_x_hr]

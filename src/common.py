@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
@@ -135,28 +136,86 @@ def day_block_folds(df: pd.DataFrame, k: int = 5) -> np.ndarray:
 
 # ----------------------------------------------------------------------------- target
 
-def to_target(cnt: np.ndarray) -> np.ndarray:
-    """z = log1p(cnt)."""
-    return np.log1p(np.asarray(cnt, dtype=np.float64))
+BACK_METHODS = ("none", "duan", "ls")
+Q_FLOOR = 1e-9   # q(eta) = (power*eta + 1)^(1/power) needs a positive base; below this the base is held here
 
 
-def back_factor(method: str, z_train: np.ndarray, eta_train: np.ndarray, cnt_train: np.ndarray) -> float:
-    """Back-transform factor s for cnt_hat = exp(eta) * s - 1 ('none', 'duan' or 'ls'), from train residuals."""
-    z_train = np.asarray(z_train, dtype=np.float64)
-    eta_train = np.asarray(eta_train, dtype=np.float64)
-    if method == "none":
-        return 1.0
-    if method == "duan":  # smearing estimate: mean of exp(residual)
-        return float(np.mean(np.exp(z_train - eta_train)))
-    if method == "ls":  # least-squares scale of exp(eta) onto cnt + 1
-        e = np.exp(eta_train)
-        return float(np.sum((np.asarray(cnt_train, dtype=np.float64) + 1.0) * e) / np.sum(e * e))
-    raise ValueError(f"unknown back-transform method: {method!r}")
+@dataclass(frozen=True)
+class Target:
+    """The power-family target of the whole chain (ADR-017) and the way predictions are turned back into bikes.
+
+    forward   z = ((cnt + 1)^power - 1) / power   (power = 0 is the limit z = log(cnt + 1) = log1p(cnt))
+    q(eta)    = cnt + 1 on the bike scale = (power*eta + 1)^(1/power)   (power = 0: exp(eta)); the inverse of forward
+    to_bikes  cnt_hat = clip(s * q(eta) - 1, 0, None), s = back-transform factor ('none' = 1, 'ls', 'duan')
+    """
+    power: float
+    back_method: str
+
+    def forward(self, cnt: np.ndarray) -> np.ndarray:
+        """z = ((cnt + 1)^power - 1) / power, or log1p(cnt) when power == 0."""
+        cnt = np.asarray(cnt, dtype=np.float64)
+        if self.power == 0:
+            return np.log1p(cnt)
+        return ((cnt + 1.0) ** self.power - 1.0) / self.power
+
+    def q(self, eta: np.ndarray) -> np.ndarray:
+        """cnt + 1 implied by the linear predictor eta: exp(eta), or (power*eta + 1)^(1/power) for power > 0."""
+        eta = np.asarray(eta, dtype=np.float64)
+        if self.power == 0:
+            return np.exp(eta)
+        return np.maximum(self.power * eta + 1.0, Q_FLOOR) ** (1.0 / self.power)
+
+    def dq_deta(self, eta: np.ndarray) -> np.ndarray:
+        """d q / d eta = q^(1 - power) (power = 0: q itself); the chain-rule factor of the bonus gradient."""
+        return self.q(eta) ** (1.0 - self.power)
+
+    def factor(self, eta_train: np.ndarray, cnt_train: np.ndarray) -> float:
+        """Back-transform factor s from the training rows only.
+
+        'none' -> 1; 'ls' -> argmin_s sum (cnt + 1 - s q)^2 = sum (cnt + 1) q / sum q^2;
+        'duan' -> mean(exp(z - eta)), the smearing estimate, which is defined for the log (power 0) only."""
+        if self.back_method == "none":
+            return 1.0
+        if self.back_method == "ls":
+            q = self.q(eta_train)
+            return float(np.sum((np.asarray(cnt_train, dtype=np.float64) + 1.0) * q) / np.sum(q * q))
+        if self.back_method == "duan":
+            if self.power != 0:
+                raise ValueError("Duan's smearing factor is defined for the log target (power 0) only")
+            return float(np.mean(np.exp(self.forward(cnt_train) - np.asarray(eta_train, dtype=np.float64))))
+        raise ValueError(f"unknown back-transform method: {self.back_method!r}")
+
+    def bikes_unclipped(self, eta: np.ndarray, s: float) -> np.ndarray:
+        """s * q(eta) - 1 (may be below 0)."""
+        return s * self.q(eta) - 1.0
+
+    def to_bikes(self, eta: np.ndarray, s: float) -> np.ndarray:
+        """cnt_hat = clip(s * q(eta) - 1, 0, None)."""
+        return np.clip(self.bikes_unclipped(eta, s), 0.0, None)
+
+    def eta_cap(self, cnt_train: np.ndarray) -> float:
+        """The eta at which q = e * (max(cnt_train) + 1): predictions are capped there so q stays finite.
+
+        forward(e*(max + 1) - 1); for power 0 this is log1p(max) + 1 (the largest fitted z plus one)."""
+        top = float(np.max(cnt_train))
+        if self.power == 0:
+            return float(np.log1p(top) + 1.0)
+        return float(self.forward(np.e * (top + 1.0) - 1.0))
+
+    def to_dict(self) -> dict:
+        """The keys of the Phase 1 artifact that describe the target (read back by `from_artifact`)."""
+        return {"target_transform": "power", "target_power": self.power,
+                "backtransform": {"method": self.back_method}}
+
+    @staticmethod
+    def from_artifact(p1: dict) -> "Target":
+        """The target of the chain, as stored by Phase 1."""
+        return Target(float(p1["target_power"]), p1["backtransform"]["method"])
 
 
-def from_target(eta: np.ndarray, s: float) -> np.ndarray:
-    """cnt_hat = clip(exp(eta) * s - 1, 0, None) on the bike scale."""
-    return np.clip(np.exp(np.asarray(eta, dtype=np.float64)) * s - 1.0, 0.0, None)
+def valid_back_methods(power: float, methods: Sequence[str]) -> list[str]:
+    """The candidate back-transform methods that exist for this exponent (Duan's factor needs power 0)."""
+    return [m for m in methods if m != "duan" or power == 0]
 
 
 # ----------------------------------------------------------------------------- metrics

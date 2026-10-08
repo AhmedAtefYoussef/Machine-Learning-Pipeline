@@ -60,6 +60,12 @@ print("stability bound 2/lambda_max:", round(p1["lr_bound"], 4))
 print("learning rate used   :", round(p1["lr"], 4), "=", p1["lr_fraction"], "x bound")
 print("condition number     :", round(p1["condition_number"], 1))
 
+# %%
+# The target transform of the whole chain, as implemented (src/common.py): forward, inverse, factor, back to bikes.
+from src.common import Target
+
+show_source(Target)
+
 # %% [markdown]
 # **Live check on this machine.** The cell above may have loaded the stored Phase 1 artifact. The next cell runs our
 # gradient descent again, here and now, from zero weights with the same settings, and compares the result with the
@@ -125,10 +131,22 @@ candidates.index.name = "method"
 print(candidates.round(4).to_string())
 print("chosen:", p1["backtransform"]["method"], "with factor", round(p1["backtransform"]["factor"], 4))
 
+# %% [markdown]
+# ### Justification: target transform
+#
+# TODO(chief)
+
+# %%
+# The same base design fitted by our own gradient descent under each candidate exponent (0 = log, 1 = raw counts).
+power_table = pd.DataFrame(p1["target_power_table"]).set_index("power")
+print(power_table.round(4).to_string())
+print("exponent used (config.yaml):", p1["target_power"], "| best exponent for this design:", p1["target_power_best_here"])
+show(plots.plot_target_power(p1))
+
 # %%
 boot = p1["val_bootstrap"]
 scores = pd.DataFrame({"R2": [p1["train_r2"], p1["val_r2"]], "RMSE": [p1["train_rmse"], p1["val_rmse"]],
-                       "R2 on log1p(cnt)": [p1["train_r2_log"], p1["val_r2_log"]]}, index=["train", "validation"])
+                       "R2 on the target z": [p1["train_r2_log"], p1["val_r2_log"]]}, index=["train", "validation"])
 print(scores.round(4).to_string())
 print(f"validation R2 95% interval: [{boot['lo']:.4f}, {boot['hi']:.4f}] (standard error {boot['se']:.4f})")
 
@@ -185,7 +203,7 @@ show_source(asym_loss, asym_grad)
 from src import bonus_control
 
 control = bonus_control.run(CFG)   # side study: reads artifacts/p1.json, writes artifacts/bonus_control.json
-rows = {"Phase 1 (log-scale MSE)": p1["bonus"]["val"]["mse_model"], "bike-scale, k = 1": control["val"]["k1_model"],
+rows = {"Phase 1 (z-scale MSE)": p1["bonus"]["val"]["mse_model"], "bike-scale, k = 1": control["val"]["k1_model"],
         "bike-scale, k = 3": p1["bonus"]["val"]["asym_model"]}
 print(pd.DataFrame(rows).T[["sq_cost", "abs_cost", "under_share", "mean_error", "rmse", "mean_pred"]].round(3).to_string())
 print("shift from fitting on bikes:", round(control["shift_from_fitting_on_bikes"], 3),

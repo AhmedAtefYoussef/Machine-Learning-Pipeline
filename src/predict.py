@@ -5,8 +5,9 @@ The regression model recommended by Phase 4 (fitted on the surviving columns) is
   B  refitted with the same hyper-parameters on training + validation rows: this one is submitted.
 The design (means, standard deviations, humidity fill) is fitted on the training rows only and never refitted.
 
-    cnt_hat = clip(exp(min(b + x . w, z_max + headroom)) * s - 1, 0)      s = back-transform factor of Phase 1's
-                                                                         method, recomputed from the fitting rows.
+    cnt_hat = clip(s * q(min(b + x . w, eta_cap)) - 1, 0)      q = inverse of the Phase 1 power transform (exp for power 0),
+                                                               s = back-transform factor of Phase 1's method, recomputed
+                                                               from the fitting rows.
 
 Writes sample_submission.csv (repo root: columns instant, cnt in the order of the hidden file) and artifacts/p6.json.
 Run it with `python -m src.predict` or `python run.py submission`.
@@ -16,12 +17,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.common import (back_factor, config_seed, load_config, load_test, load_train, read_artifact,
-                        seeded_split, set_threads, to_target, write_artifact)
+from src.common import (Target, config_seed, load_config, load_test, load_train, read_artifact, seeded_split,
+                        set_threads, write_artifact)
 from src.features import Design, DesignSpec
 from src.phases.p4 import MAX_SWEEPS, SOLVER_TOL
 from src.regularization import alpha_grid, alpha_max, enet_path, ridge_closed_form
-from src.validation import ETA_HEADROOM
 
 SUBMISSION_PATH = "sample_submission.csv"
 REPRODUCTION_TOL = 1.0e-6     # model A must match the Phase 4 weights this closely
@@ -46,12 +46,11 @@ def fit_penalised(X: np.ndarray, z: np.ndarray, rec: dict, p4cfg: dict) -> tuple
     return float(B[-1]), W[-1]
 
 
-def unclipped_bikes(b: float, w: np.ndarray, X_fit, cnt_fit, X_new, back_method: str) -> np.ndarray:
-    """exp(eta) * s - 1 for the rows X_new (may be below 0); s comes from the fitting rows."""
-    z_fit = to_target(cnt_fit)
-    s = back_factor(back_method, z_fit, b + X_fit @ w, cnt_fit)
-    eta_new = np.minimum(b + X_new @ w, z_fit.max() + ETA_HEADROOM)   # same cap as validation.fit_predict
-    return np.exp(eta_new) * s - 1.0
+def unclipped_bikes(b: float, w: np.ndarray, X_fit, cnt_fit, X_new, target: Target) -> np.ndarray:
+    """s * q(eta) - 1 for the rows X_new (may be below 0); s comes from the fitting rows."""
+    s = target.factor(b + X_fit @ w, cnt_fit)
+    eta_new = np.minimum(b + X_new @ w, target.eta_cap(cnt_fit))   # same cap as validation.fit_predict
+    return target.bikes_unclipped(eta_new, s)
 
 
 # ----------------------------------------------------------------------------- sanity summaries
@@ -107,16 +106,16 @@ def build(cfg: dict, p4: dict, p1: dict) -> tuple[pd.DataFrame, dict]:
     columns = design.subset(rec["feature_names"])
     X_tr, X_va, X_te = (design.transform(d)[:, columns] for d in (train_df, val_df, test_df))
     cnt_tr, cnt_va = (d["cnt"].to_numpy(dtype=np.float64) for d in (train_df, val_df))
-    back_method = p1["backtransform"]["method"]
+    target = Target.from_artifact(p1)
 
-    b_a, w_a = fit_penalised(X_tr, to_target(cnt_tr), rec, cfg["p4"])
+    b_a, w_a = fit_penalised(X_tr, target.forward(cnt_tr), rec, cfg["p4"])
     gap = max(abs(b_a - rec["intercept"]), float(np.max(np.abs(w_a - np.asarray(rec["weights"])))))
     assert gap < REPRODUCTION_TOL, f"model A does not reproduce the Phase 4 weights (max gap {gap:.2e})"
 
     X_all, cnt_all = np.vstack([X_tr, X_va]), np.concatenate([cnt_tr, cnt_va])
-    b_b, w_b = fit_penalised(X_all, to_target(cnt_all), rec, cfg["p4"])
-    pred_a = clip_at_zero(unclipped_bikes(b_a, w_a, X_tr, cnt_tr, X_te, back_method))
-    raw_b = unclipped_bikes(b_b, w_b, X_all, cnt_all, X_te, back_method)
+    b_b, w_b = fit_penalised(X_all, target.forward(cnt_all), rec, cfg["p4"])
+    pred_a = clip_at_zero(unclipped_bikes(b_a, w_a, X_tr, cnt_tr, X_te, target))
+    raw_b = unclipped_bikes(b_b, w_b, X_all, cnt_all, X_te, target)
     pred = np.round(clip_at_zero(raw_b), PRED_DECIMALS)
 
     sub = pd.DataFrame({"instant": test_df["instant"].to_numpy(), "cnt": pred})

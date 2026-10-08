@@ -2,7 +2,7 @@
 
 The Phase 1 model minimises squared error on log-bikes; the bonus model minimises a 3:1 weighted squared error
 on bikes. Those two differ in two ways at once (the scale of the loss and the asymmetry). This control fits the
-same bike-scale loss with k = 1 (no asymmetry), starting from the same Phase 1 weights, so the shift can be split
+same bike-scale loss (prediction q(Xw) - 1) with k = 1 (no asymmetry), starting from the same Phase 1 weights, so the shift can be split
 into "fitting on bikes" (k = 1 versus Phase 1) and "asymmetry" (k = 3 versus k = 1).
 
 Side study only: reads artifacts/p1.json, writes artifacts/bonus_control.json, feeds no phase.
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.common import from_target, load_config, r2, read_artifact, rmse, set_threads, write_artifact
+from src.common import Target, load_config, r2, read_artifact, rmse, set_threads, write_artifact
 from src.gd_asym import fit_asymmetric, operator_costs
 from src.phases.p1 import base_design, make_split
 
@@ -30,13 +30,14 @@ def run(cfg: dict | None = None) -> dict:
     p1 = read_artifact("p1")
     bonus_cfg = cfg["p1"]["bonus"]
     k = bonus_cfg["k_under"]
-    split = make_split(cfg)
+    target = Target.from_artifact(p1)
+    split = make_split(cfg, target)
     _, X_tr, X_va = base_design(split)
     w_mse = np.array(p1["weights"], dtype=np.float64)
 
-    res = fit_asymmetric(X_tr, split.cnt_tr, w_mse, k=1.0, max_iter=bonus_cfg["max_iter"],
+    res = fit_asymmetric(X_tr, split.cnt_tr, w_mse, target, k=1.0, max_iter=bonus_cfg["max_iter"],
                          tol_loss=bonus_cfg["tol_loss"])
-    pred_k1 = from_target(X_va @ res.weights, 1.0)   # exp(Xw) - 1, clipped at 0, as in the Phase 1 bonus table
+    pred_k1 = target.to_bikes(X_va @ res.weights, 1.0)   # q(Xw) - 1, clipped at 0, as in the Phase 1 bonus table
     mean_mse = p1["bonus"]["val"]["mse_model"]["mean_pred"]
     mean_k3 = p1["bonus"]["val"]["asym_model"]["mean_pred"]
     k1 = describe(split.cnt_va, pred_k1, k)

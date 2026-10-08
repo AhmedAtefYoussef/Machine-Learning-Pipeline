@@ -1,9 +1,12 @@
-"""Tests for src.gd_asym (S-0-02: raw-scale asymmetric squared cost, log-link model)."""
+"""Tests for src.gd_asym (S-0-02, generalised in S-8-01: raw-scale asymmetric squared cost, power-target model)."""
 import numpy as np
 import pytest
 
+from src.common import Target
+
 ga = pytest.importorskip("src.gd_asym")
 gd = pytest.importorskip("src.gd")
+LOG = Target(0.0, "none")   # the log target: q = exp, the v1 model
 
 
 def log_linear_data(n=500, p=5, seed=0, sigma=0.5):
@@ -19,15 +22,15 @@ def test_loss_hand_example():
     X = np.ones((3, 1))
     w = np.array([np.log(4.0)])  # yhat = 3
     y = np.array([1.0, 5.0, 3.0])  # r = 2, -2, 0
-    assert ga.asym_loss(X, y, w, k=3.0) == pytest.approx(16.0 / 3.0, rel=1e-12)
-    assert ga.asym_loss(X, y, w, k=1.0) == pytest.approx(8.0 / 3.0, rel=1e-12)
+    assert ga.asym_loss(X, y, w, LOG, k=3.0) == pytest.approx(16.0 / 3.0, rel=1e-12)
+    assert ga.asym_loss(X, y, w, LOG, k=1.0) == pytest.approx(8.0 / 3.0, rel=1e-12)
 
 
 def test_grad_hand_example():
     X = np.ones((3, 1))
     w = np.array([np.log(4.0)])
     y = np.array([1.0, 5.0, 3.0])
-    g = ga.asym_grad(X, y, w, k=3.0)
+    g = ga.asym_grad(X, y, w, LOG, k=3.0)
     assert g.shape == (1,)
     assert g[0] == pytest.approx(-32.0 / 3.0, rel=1e-12)
 
@@ -37,7 +40,7 @@ def test_loss_matches_formula_random():
     w = np.random.default_rng(2).normal(size=4) * 0.3 + np.array([3.0, 0, 0, 0])
     r = np.expm1(X @ w) - y
     c = np.where(r < 0, 3.0, 1.0)
-    assert ga.asym_loss(X, y, w, 3.0) == pytest.approx(np.mean(c * r * r), rel=1e-12)
+    assert ga.asym_loss(X, y, w, LOG, 3.0) == pytest.approx(np.mean(c * r * r), rel=1e-12)
 
 
 @pytest.mark.parametrize("k", [3.0, 1.0, 5.0])
@@ -50,8 +53,8 @@ def test_gradient_check(k):
         assert np.abs(X @ w).max() <= 3.0
         resid = np.expm1(X @ w) - y
         assert np.all(resid != 0)
-        loss = lambda v: ga.asym_loss(X, y, v, k)
-        grad = lambda v: ga.asym_grad(X, y, v, k)
+        loss = lambda v: ga.asym_loss(X, y, v, LOG, k)
+        grad = lambda v: ga.asym_grad(X, y, v, LOG, k)
         assert gd.gradient_check(loss, grad, w, n_coords=5, eps=1e-6, seed=0) < 1e-6
 
 
@@ -79,8 +82,8 @@ def test_fit_lowers_loss_and_reduces_under_share():
     X, y, _ = log_linear_data(500, 5, 5)
     z = np.log1p(y)
     w0 = np.linalg.lstsq(X, z, rcond=None)[0]  # leak-ok: oracle
-    res = ga.fit_asymmetric(X, y, w0, k=3.0, max_iter=5000)
-    assert ga.asym_loss(X, y, res.weights, 3.0) < ga.asym_loss(X, y, w0, 3.0)
+    res = ga.fit_asymmetric(X, y, w0, LOG, k=3.0, max_iter=5000)
+    assert ga.asym_loss(X, y, res.weights, LOG, 3.0) < ga.asym_loss(X, y, w0, LOG, 3.0)
     yh0 = np.expm1(X @ w0)
     yh1 = np.expm1(X @ res.weights)
     assert yh1.mean() > yh0.mean()
@@ -96,14 +99,42 @@ def test_fit_recovers_noise_free_k1():
     X, _, w_true = log_linear_data(300, 4, 6)
     y = np.expm1(X @ w_true)
     w0 = w_true + np.array([0.0, 0.2, -0.2, 0.1])
-    res = ga.fit_asymmetric(X, y, w0, k=1.0, max_iter=20000)
-    assert ga.asym_loss(X, y, res.weights, 1.0) < 1e-3 * ga.asym_loss(X, y, w0, 1.0)
+    res = ga.fit_asymmetric(X, y, w0, LOG, k=1.0, max_iter=20000)
+    assert ga.asym_loss(X, y, res.weights, LOG, 1.0) < 1e-3 * ga.asym_loss(X, y, w0, LOG, 1.0)
 
 
 def test_fit_deterministic():
     X, y, _ = log_linear_data(200, 4, 7)
     w0 = np.linalg.lstsq(X, np.log1p(y), rcond=None)[0]  # leak-ok: oracle
-    a = ga.fit_asymmetric(X, y, w0, 3.0, max_iter=300)
-    b = ga.fit_asymmetric(X, y, w0, 3.0, max_iter=300)
+    a = ga.fit_asymmetric(X, y, w0, LOG, 3.0, max_iter=300)
+    b = ga.fit_asymmetric(X, y, w0, LOG, 3.0, max_iter=300)
     assert a.weights.tobytes() == b.weights.tobytes()
     assert a.iterations == b.iterations
+
+
+@pytest.mark.parametrize("power", [0.0, 0.1])
+def test_gradient_check_power_target(power):
+    """Finite-difference check of the generalised gradient (yhat = q(Xw) - 1) for the log and for power 0.1."""
+    target = Target(power, "none")
+    X, y, _ = log_linear_data(200, 5, 3)
+    r = np.random.default_rng(4)
+    for _ in range(3):
+        w = r.normal(size=5) * 0.15
+        w[0] = r.uniform(1.0, 2.0) if power == 0 else r.uniform(0.5, 1.0)
+        assert np.all(power * (X @ w) + 1 > 0.1)                       # q away from its floor
+        assert np.all(target.q(X @ w) - 1.0 - y != 0)
+        def loss(v):
+            return ga.asym_loss(X, y, v, target, 3.0)
+
+        def grad(v):
+            return ga.asym_grad(X, y, v, target, 3.0)
+
+        assert gd.gradient_check(loss, grad, w, n_coords=5, eps=1e-6, seed=0) < 1e-6
+
+
+def test_power_target_fit_lowers_loss():
+    target = Target(0.1, "none")
+    X, y, _ = log_linear_data(300, 4, 8)
+    w0 = np.linalg.lstsq(X, target.forward(y), rcond=None)[0]  # leak-ok: oracle
+    res = ga.fit_asymmetric(X, y, w0, target, k=3.0, max_iter=3000)
+    assert ga.asym_loss(X, y, res.weights, target, 3.0) < ga.asym_loss(X, y, w0, target, 3.0)

@@ -4,7 +4,8 @@ target design plus the six candidate columns we had kept out, followed by a verd
 Conventions
   * The solvers take X WITHOUT the bias column (they fit the intercept themselves); `n_features` in the artifact
     counts the bias column, like p1..p3, while `feature_names` and `weights` do not contain it.
-  * Objective (sklearn scaling): (1/2n)||z - b - Xw||^2 + alpha*rho*||w||_1 + (alpha/2)(1-rho)||w||^2, z = log1p(cnt).
+  * Objective (sklearn scaling): (1/2n)||z - b - Xw||^2 + alpha*rho*||w||_1 + (alpha/2)(1-rho)||w||^2, z = the power
+    transform of cnt fixed in Phase 1 (log1p for power 0).
   * All R2 / RMSE are on the bike scale, with the back-transform method of Phase 1 recomputed from the fitting rows.
   * Each lasso / elastic-net solution that exhausts MAX_SWEEPS is counted in `not_converged`, never hidden.
 """
@@ -18,14 +19,12 @@ import numpy as np
 import pandas as pd
 
 from src import verdicts as vd
-from src.common import (back_factor, bootstrap_r2, chrono_split, config_seed, day_block_folds, from_target,
-                        load_config, load_train, paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split,
-                        set_threads, to_target, write_artifact)
+from src.common import (Target, bootstrap_r2, chrono_split, config_seed, day_block_folds, load_config, load_train,
+                        paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split, set_threads, write_artifact)
 from src.features import Design, DesignSpec, sources
 from src.phases.p3 import ladder_specs
 from src.regularization import (alpha_grid, alpha_max, enet_cd, enet_path, group_bootstrap_rows,
                                 ridge_closed_form, ridge_path)
-from src.validation import ETA_HEADROOM
 
 SOLVER_TOL = 1.0e-7        # coordinate descent stops when no coefficient moves more than this (fixed by S-4-01)
 MAX_SWEEPS = 20000
@@ -97,7 +96,7 @@ class Context:
     p4cfg: dict
     seed: int
     B: int
-    back_method: str
+    target: Target
     all_df: pd.DataFrame
     train_df: pd.DataFrame
     val_df: pd.DataFrame
@@ -151,7 +150,7 @@ def pick_design(cfg: dict, p2: dict, p3: dict, train_df: pd.DataFrame) -> tuple[
     return spec, design_from
 
 
-def build_split(spec: DesignSpec, fit_df: pd.DataFrame, eval_df: pd.DataFrame,
+def build_split(spec: DesignSpec, fit_df: pd.DataFrame, eval_df: pd.DataFrame, target: Target,
                 columns: list[str] | None = None) -> Split:
     """Fit the design on fit_df only, transform both frames, drop the bias column.
 
@@ -159,7 +158,7 @@ def build_split(spec: DesignSpec, fit_df: pd.DataFrame, eval_df: pd.DataFrame,
     design = Design(spec).fit(fit_df)
     X_fit, X_eval = design.transform(fit_df)[:, 1:], design.transform(eval_df)[:, 1:]
     cnt_fit = fit_df["cnt"].to_numpy(dtype=np.float64)
-    split = Split(design.names[1:], X_fit, to_target(cnt_fit), cnt_fit, X_eval,
+    split = Split(design.names[1:], X_fit, target.forward(cnt_fit), cnt_fit, X_eval,
                   eval_df["cnt"].to_numpy(dtype=np.float64))
     return split if columns is None else split.keep([split.names.index(n) for n in columns])
 
@@ -169,23 +168,23 @@ def fold_splits(ctx: Context, spec: DesignSpec | None = None) -> list[Split]:
     columns = ctx.columns if spec is None else None
     spec = spec or ctx.spec
     folds = day_block_folds(ctx.train_df, ctx.cfg["day_block_folds"])
-    return [build_split(spec, ctx.train_df[folds != f], ctx.train_df[folds == f], columns)
+    return [build_split(spec, ctx.train_df[folds != f], ctx.train_df[folds == f], ctx.target, columns)
             for f in range(ctx.cfg["day_block_folds"])]
 
 
 # ----------------------------------------------------------------------------- scoring
 
-def predict_bikes(split: Split, b: float, w: np.ndarray, back_method: str) -> tuple[np.ndarray, np.ndarray]:
+def predict_bikes(split: Split, b: float, w: np.ndarray, target: Target) -> tuple[np.ndarray, np.ndarray]:
     """Bike-scale predictions (fitting rows, evaluation rows); eta on evaluation rows capped like validation.fit_predict."""
     eta_fit = b + split.X_fit @ w
-    s = back_factor(back_method, split.z_fit, eta_fit, split.cnt_fit)
-    eta_eval = np.minimum(b + split.X_eval @ w, split.z_fit.max() + ETA_HEADROOM)
-    return from_target(eta_fit, s), from_target(eta_eval, s)
+    s = target.factor(eta_fit, split.cnt_fit)
+    eta_eval = np.minimum(b + split.X_eval @ w, target.eta_cap(split.cnt_fit))
+    return target.to_bikes(eta_fit, s), target.to_bikes(eta_eval, s)
 
 
-def score(split: Split, b: float, w: np.ndarray, back_method: str) -> tuple[dict, np.ndarray]:
+def score(split: Split, b: float, w: np.ndarray, target: Target) -> tuple[dict, np.ndarray]:
     """(train/eval R2 and RMSE, evaluation predictions) of the model (b, w)."""
-    pred_fit, pred_eval = predict_bikes(split, b, w, back_method)
+    pred_fit, pred_eval = predict_bikes(split, b, w, target)
     scores = {"train_r2": r2(split.cnt_fit, pred_fit), "train_rmse": rmse(split.cnt_fit, pred_fit),
               "r2": r2(split.cnt_eval, pred_eval), "rmse": rmse(split.cnt_eval, pred_eval)}
     return scores, pred_eval
@@ -235,7 +234,7 @@ def build_curve(split: Split, rho: float, ctx: Context, where: str) -> Curve:
     B, W = solve_path(split, alphas, rho, ctx.log, where)
     rows = []
     for a, b, w in zip(alphas, B, W):
-        s, _ = score(split, b, w, ctx.back_method)
+        s, _ = score(split, b, w, ctx.target)
         rows.append({"alpha": float(a), "val_r2": s["r2"], "val_rmse": s["rmse"], "train_r2": s["train_r2"],
                      "n_nonzero": count_nonzero(w)})
     return Curve(rho, alphas, B, W, rows)
@@ -272,7 +271,7 @@ def cv_fold_r2(folds: list[Split], alphas: np.ndarray, rho: float, ctx: Context,
     out = np.zeros((len(folds), len(alphas)))
     for f, split in enumerate(folds):
         B, W = solve_path(split, alphas, rho, ctx.log, f"{where} fold {f}")
-        out[f] = [score(split, b, w, ctx.back_method)[0]["r2"] for b, w in zip(B, W)]
+        out[f] = [score(split, b, w, ctx.target)[0]["r2"] for b, w in zip(B, W)]
     return out
 
 
@@ -302,19 +301,19 @@ def cross_validation(curves: dict, fits: dict[str, Fit], ctx: Context) -> dict:
 def chrono_result(fit: Fit, grid: np.ndarray, chrono: Split, ctx: Context) -> dict:
     """Design and model fitted on the early part, scored on the late part, same alpha and rho."""
     b, w = fit_at(chrono, fit.alpha, fit.rho, grid, ctx.log, f"chrono {fit.method}")
-    s, _ = score(chrono, b, w, ctx.back_method)
+    s, _ = score(chrono, b, w, ctx.target)
     return {"chrono_r2": s["r2"], "chrono_rmse": s["rmse"]}
 
 
 def describe_methods(curves: dict, fits: dict[str, Fit], cv: dict, ctx: Context):
     """methods.{l2,l1,enet} and the validation predictions of each (kept for the paired comparisons)."""
     early_df, late_df = chrono_split(ctx.all_df, ctx.cfg["chrono"]["cut_date"])
-    chrono = build_split(ctx.spec, early_df, late_df, ctx.columns)
+    chrono = build_split(ctx.spec, early_df, late_df, ctx.target, ctx.columns)
     y_val = ctx.split.cnt_eval
     methods, preds = {}, {}
     for m, fit in fits.items():
         curve = curves["enet"][fit.rho] if m == "enet" else curves[m]
-        s, pred = score(ctx.split, fit.b, fit.w, ctx.back_method)
+        s, pred = score(ctx.split, fit.b, fit.w, ctx.target)
         lo, hi, _ = bootstrap_r2(y_val, pred, ctx.seed, ctx.B)
         methods[m] = {"lambda": fit.alpha, "l1_ratio": fit.rho, "val_r2": s["r2"], "val_rmse": s["rmse"],
                       "val_lo": lo, "val_hi": hi, "train_r2": s["train_r2"], "train_rmse": s["train_rmse"],
@@ -328,7 +327,7 @@ def describe_methods(curves: dict, fits: dict[str, Fit], cv: dict, ctx: Context)
 def unregularised_model(ctx: Context):
     """Ridge with a negligible penalty: the closed-form least-squares fit (scores, validation predictions)."""
     b, w = ridge_closed_form(ctx.split.X_fit, ctx.split.z_fit, UNREGULARISED_ALPHA)
-    s, pred = score(ctx.split, b, w, ctx.back_method)
+    s, pred = score(ctx.split, b, w, ctx.target)
     return {"alpha": UNREGULARISED_ALPHA, "train_r2": s["train_r2"], "train_rmse": s["train_rmse"],
             "val_r2": s["r2"], "val_rmse": s["rmse"]}, pred
 
@@ -406,9 +405,9 @@ def stability(fits: dict[str, Fit], ctx: Context) -> dict:
 def rich_check(p2: dict, fits: dict[str, Fit], rec_pred: np.ndarray, ctx: Context) -> dict:
     """Last ladder level without candidates: unregularised, ridge and lasso on validation (informational only)."""
     top = ladder_specs(ctx.cfg, DesignSpec.from_dict(p2["design_spec"]))[-1]
-    split = build_split(top["spec"], ctx.train_df, ctx.val_df)
+    split = build_split(top["spec"], ctx.train_df, ctx.val_df, ctx.target)
     b, w = ridge_closed_form(split.X_fit, split.z_fit, UNREGULARISED_ALPHA)
-    unreg = score(split, b, w, ctx.back_method)[0]["r2"]
+    unreg = score(split, b, w, ctx.target)[0]["r2"]
     folds = fold_splits(ctx, top["spec"])
     result = {"level": top["name"], "n_features": split.X_fit.shape[1] + 1, "unregularised_val_r2": unreg}
     best_pred, best_r2 = None, -np.inf
@@ -423,17 +422,17 @@ def rich_check(p2: dict, fits: dict[str, Fit], rec_pred: np.ndarray, ctx: Contex
             entry["n_nonzero"] = curve.rows[i]["n_nonzero"]
         result[m] = entry
         if entry["val_r2"] > best_r2:
-            best_r2, best_pred = entry["val_r2"], score(split, curve.B[i], curve.W[i], ctx.back_method)[1]
+            best_r2, best_pred = entry["val_r2"], score(split, curve.B[i], curve.W[i], ctx.target)[1]
     result["paired_best_vs_recommended"] = paired(ctx.split.cnt_eval, best_pred, rec_pred, ctx)
     return result
 
 
 # ----------------------------------------------------------------------------- verdicts
 
-def ridge_predictions(split: Split, lam: float, back_method: str) -> np.ndarray:
+def ridge_predictions(split: Split, lam: float, target: Target) -> np.ndarray:
     """Evaluation predictions of ridge at lam on this split's columns."""
     b, w = ridge_closed_form(split.X_fit, split.z_fit, lam)
-    return score(split, b, w, back_method)[1]
+    return score(split, b, w, target)[1]
 
 
 def columns_without(split: Split, dropped: set[str]) -> Split:
@@ -442,7 +441,7 @@ def columns_without(split: Split, dropped: set[str]) -> Split:
 
 def drop_cost(split: Split, reference_pred: np.ndarray, dropped: set[str], lam: float, ctx: Context) -> dict:
     """R2(full) - R2(without `dropped`) on the evaluation rows, paired bootstrap interval (positive = dropping hurts)."""
-    pred = ridge_predictions(columns_without(split, dropped), lam, ctx.back_method)
+    pred = ridge_predictions(columns_without(split, dropped), lam, ctx.target)
     return paired(split.cnt_eval, reference_pred, pred, ctx)
 
 
@@ -450,7 +449,7 @@ def drop_cost_day_block(folds: list[Split], reference_r2: list[float], dropped: 
     """Mean over folds of R2(full) - R2(without `dropped`); every fold refits its design."""
     costs = []
     for split, full_r2 in zip(folds, reference_r2):
-        pred = ridge_predictions(columns_without(split, dropped), lam, ctx.back_method)
+        pred = ridge_predictions(columns_without(split, dropped), lam, ctx.target)
         costs.append(full_r2 - r2(split.cnt_eval, pred))
     return float(np.mean(costs))
 
@@ -461,7 +460,7 @@ def solo_r2(split: Split, column: str, lam: float, ctx: Context) -> float | None
     if not mine:
         return None
     only = split.keep([split.names.index(n) for n in mine])
-    return r2(split.cnt_eval, ridge_predictions(only, lam, ctx.back_method))
+    return r2(split.cnt_eval, ridge_predictions(only, lam, ctx.target))
 
 
 def lasso_numbers(column: str, names: list[str], w: np.ndarray, freq: dict, ranks: dict) -> dict:
@@ -498,9 +497,9 @@ def column_verdicts(fits: dict[str, Fit], entry_alpha: dict, stab: dict, ctx: Co
     """The verdict, evidence and numbers of all 14 original columns (reference = ridge at its chosen lambda)."""
     lam = fits["l2"].alpha
     thr = ctx.p4cfg["verdict"]
-    ref_pred = ridge_predictions(ctx.split, lam, ctx.back_method)
+    ref_pred = ridge_predictions(ctx.split, lam, ctx.target)
     folds = fold_splits(ctx)
-    ref_fold_r2 = [r2(s.cnt_eval, ridge_predictions(s, lam, ctx.back_method)) for s in folds]
+    ref_fold_r2 = [r2(s.cnt_eval, ridge_predictions(s, lam, ctx.target)) for s in folds]
     ranks = vd.entry_ranks(entry_alpha, ctx.split.names)
     numbers = {c: column_numbers(c, ctx, lam, ref_pred, folds, ref_fold_r2, fits["l1"].w,
                                  stab["l1"]["freq"], ranks) for c in vd.ORIGINAL}
@@ -556,12 +555,12 @@ def survivors(verdict: dict, ctx: Context) -> dict:
 def unregularised_final(ctx: Context) -> tuple[dict, np.ndarray]:
     """Ridge 1e-8 on the stage-B columns with train / validation / held-out-day / chronological scores."""
     scores, pred = unregularised_model(ctx)
-    day_block = [r2(f.cnt_eval, ridge_predictions(f, UNREGULARISED_ALPHA, ctx.back_method)) for f in fold_splits(ctx)]
+    day_block = [r2(f.cnt_eval, ridge_predictions(f, UNREGULARISED_ALPHA, ctx.target)) for f in fold_splits(ctx)]
     early_df, late_df = chrono_split(ctx.all_df, ctx.cfg["chrono"]["cut_date"])
-    chrono = build_split(ctx.spec, early_df, late_df, ctx.columns)
+    chrono = build_split(ctx.spec, early_df, late_df, ctx.target, ctx.columns)
     b, w = ridge_closed_form(chrono.X_fit, chrono.z_fit, UNREGULARISED_ALPHA)
     scores.update({"day_block_r2": float(np.mean(day_block)),
-                   "chrono_r2": score(chrono, b, w, ctx.back_method)[0]["r2"]})
+                   "chrono_r2": score(chrono, b, w, ctx.target)[0]["r2"]})
     return scores, pred
 
 
@@ -602,8 +601,9 @@ def build_context(cfg: dict, p1: dict, p2: dict, p3: dict) -> Context:
     all_df = load_train(cfg)
     train_df, val_df = seeded_split(all_df, seed, cfg["split"]["test_size"])
     spec, design_from = pick_design(cfg, p2, p3, train_df)
-    return Context(cfg, cfg["p4"], seed, cfg["bootstrap"]["B"], p1["backtransform"]["method"], all_df, train_df,
-                  val_df, spec, build_split(spec, train_df, val_df), SolverLog(), design_from)
+    target = Target.from_artifact(p1)
+    return Context(cfg, cfg["p4"], seed, cfg["bootstrap"]["B"], target, all_df, train_df,
+                  val_df, spec, build_split(spec, train_df, val_df, target), SolverLog(), design_from)
 
 
 def grid_summary(curves: dict) -> dict:
@@ -646,7 +646,7 @@ def run(cfg: dict | None = None) -> dict:
     payload = {
         "design_from": ctx.design_from, "design_spec": ctx.spec.to_dict(),
         "feature_names": ctx.split.names, "n_features": ctx.split.X_fit.shape[1] + 1,
-        "back_method": ctx.back_method, "unregularised": unreg,
+        "back_method": ctx.target.back_method, "target_power": ctx.target.power, "unregularised": unreg,
         "curves": {"l2": curves["l2"].rows, "l1": curves["l1"].rows,
                    "enet": {str(rho): c.rows for rho, c in curves["enet"].items()}},
         "cv": cv, "methods": methods, "comparisons": compare,

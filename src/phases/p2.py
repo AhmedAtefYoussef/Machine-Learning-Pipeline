@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.common import (bootstrap_r2, load_config, paired_bootstrap_delta_r2, read_artifact,
+from src.common import (Target, bootstrap_r2, load_config, paired_bootstrap_delta_r2, read_artifact,
                         set_threads, write_artifact)
 from src.features import BASE, Design, DesignSpec
 from src.gd import lambda_max, mse_loss
@@ -52,7 +52,7 @@ def fit_expanded(spec: DesignSpec, split: Split, p1: dict, cfg: dict) -> Fit:
     lam = lambda_max(X_tr)
     lr = p2["lr_fraction_of_bound"] * 2.0 / lam
     res = run_gd(X_tr, split.z_tr, w0, lr, p2["tol_loss"], p2["tol_grad"], p2["max_iter"])
-    scores = model_scores(split, X_tr, X_va, res.weights, p1["backtransform"]["method"])
+    scores = model_scores(split, X_tr, X_va, res.weights, Target.from_artifact(p1))
     row = {"spec": spec.to_dict(), "degree": spec.degree, "power_cols": list(spec.power_cols),
            "n_features": X_tr.shape[1], "lambda_max": lam, "lr": lr, "iterations": res.iterations,
            "stop_reason": res.stop_reason, "init_loss": init_loss, "train_loss_final": mse_loss(X_tr, split.z_tr, res.weights),
@@ -85,8 +85,8 @@ def run(cfg: dict | None = None) -> dict:
     set_threads(cfg["threads"])
     p2 = cfg["p2"]
     p1 = read_artifact("p1")
-    split = make_split(cfg)
-    method = p1["backtransform"]["method"]
+    target = Target.from_artifact(p1)
+    split = make_split(cfg, target)
     blocks = tuple(p2["blocks"])
     widest = max(p2["power_col_candidates"], key=len)
 
@@ -108,10 +108,10 @@ def run(cfg: dict | None = None) -> dict:
                             split, p1, cfg).row
 
     w, X_tr, X_va = final.weights, final.X_tr, final.X_va
-    scores = model_scores(split, X_tr, X_va, w, method)
-    _, _, pred_va = bike_predictions(split, X_tr, X_va, w, method)
+    scores = model_scores(split, X_tr, X_va, w, target)
+    _, _, pred_va = bike_predictions(split, X_tr, X_va, w, target)
     n_base = len(p1["feature_names"])
-    _, _, pred_va_p1 = bike_predictions(split, X_tr[:, :n_base], X_va[:, :n_base], np.array(p1["weights"]), method)
+    _, _, pred_va_p1 = bike_predictions(split, X_tr[:, :n_base], X_va[:, :n_base], np.array(p1["weights"]), target)
     lo, hi, se = bootstrap_r2(split.cnt_va, pred_va, split.seed, cfg["bootstrap"]["B"])
     delta, d_lo, d_hi = paired_bootstrap_delta_r2(split.cnt_va, pred_va, pred_va_p1, split.seed, cfg["bootstrap"]["B"])
     names = final.design.names
@@ -130,12 +130,12 @@ def run(cfg: dict | None = None) -> dict:
         "p1_val_r2": p1["val_r2"], "gain_over_p1": scores["val_r2"] - p1["val_r2"],
         "degree_sweep": degree_rows, "power_col_sweep": [f.row for f in col_fits],
         "block_ablation": {"without_wd_x_hr": {k: ablation[k] for k in ("n_features", "val_r2", "train_r2", "iterations")}},
-        "plateau_tol": p2["plateau_tol"], "oracle": oracle_gap(split, X_tr, X_va, w, method),
+        "plateau_tol": p2["plateau_tol"], "oracle": oracle_gap(split, X_tr, X_va, w, target),
         "loss_curve": curve_points(final.loss_history, MAIN_CURVE_POINTS),
         "val_bootstrap": {"lo": lo, "hi": hi, "se": se},
         "paired_vs_p1": {"delta": delta, "lo": d_lo, "hi": d_hi},
         "residual_profile": residual_profile(split.train_df, split.z_tr - X_tr @ w),
-        "backtransform": {"method": method, "factor": scores["factor"]},
+        "backtransform": {"method": target.back_method, "factor": scores["factor"]},
     }
     write_artifact("p2", payload, upstream="p1", cfg=cfg)
     return read_artifact("p2")

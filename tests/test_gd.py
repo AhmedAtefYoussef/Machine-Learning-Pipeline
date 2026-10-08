@@ -169,7 +169,7 @@ def test_lift_preserves_loss_on_real_design(train_df):
     big_spec = features.DesignSpec(base=tuple(features.BASE), power_cols=("temp", "hum", "windspeed"), degree=3, blocks=("wd_x_hr",))
     big = features.Design(big_spec).fit(train_df, base_scaler=base.scaler_dict())
     Xb, Xg = base.transform(train_df), big.transform(train_df)
-    z = common.to_target(train_df["cnt"].to_numpy(dtype=float))
+    z = common.Target(0.1, "ls").forward(train_df["cnt"].to_numpy(dtype=float))
     w = np.random.default_rng(0).normal(size=Xb.shape[1]) * 0.3
     lifted = poly.lift_weights(w, base.names, big.names)
     assert abs(gd.mse_loss(Xg, z, lifted) - gd.mse_loss(Xb, z, w)) < 1e-12

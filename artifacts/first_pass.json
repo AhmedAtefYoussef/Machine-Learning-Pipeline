@@ -1,0 +1,46 @@
+{
+ "note": "Key numbers of the first complete run (git tag v1-submitted, log1p target), kept so the report can compare the two passes. Not part of the chain.",
+ "p1": {
+  "backtransform_factor": 1.041272891745656,
+  "bonus_under_share_mse": 0.5183654729109275,
+  "duan_val_r2": 0.6956095454478731,
+  "iterations": 474,
+  "ls_val_r2": 0.7211978961742889,
+  "none_val_r2": 0.7180974823118208,
+  "val_r2": 0.7211978961742889,
+  "val_rmse": 97.3189181873482
+ },
+ "p2": {
+  "degree": 3,
+  "val_r2": 0.9104639163214027,
+  "val_rmse": 55.150352988631845
+ },
+ "p3": {
+  "anchor": {
+   "chrono": 0.8577052685306448,
+   "day_holdout": 0.9093000877810742,
+   "seeded": 0.9104638448221198
+  },
+  "chrono_mean_ratio_target": 1.1056369609032999,
+  "drift_gap_target": 0.028481167883676606,
+  "target": {
+   "chrono": 0.914128809276274,
+   "day_holdout": 0.9426099771599507,
+   "seeded": 0.9390002154408909
+  },
+  "target_level": "C6_weather_detail"
+ },
+ "p4": {
+  "chrono_r2": 0.9141462692367023,
+  "day_block_r2": 0.9427951054804229,
+  "method": "enet",
+  "val_r2": 0.9390104662519174,
+  "val_rmse": 45.517343318411264
+ },
+ "p5": {
+  "accuracy": 0.7892561983471075,
+  "f1": 0.6627479794268921,
+  "roc_auc": 0.8858643685005927
+ },
+ "target_transform": "log1p"
+}

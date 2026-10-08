@@ -143,6 +143,19 @@ print("target:", target["level"], "| weights:", target["n_features"], "| degree:
 print("blocks:", target["blocks"])
 
 # %% [markdown]
+# ### Justification: exponent check
+#
+# TODO(chief)
+
+# %%
+# The target design in closed form under each candidate exponent (the chain itself uses the exponent from Phase 1).
+exponents = pd.DataFrame(p3["target_power_check"]).set_index("power")
+print(exponents.round(4).to_string())
+print("exponent used:", p3["target_power_used"], "| best seeded R2 at:", p3["target_power_best_seeded"],
+      "| consistent within the plateau tolerance:", p3["target_power_consistent"])
+show(plots.plot_target_power(read_artifact("p1"), p3))
+
+# %% [markdown]
 # ### Justification: target complexity
 #
 # Rule: the simplest ladder level whose seeded validation R² is within {{p3.plateau_tol}} of the best level. It selects {{p3.target_complexity.level}} ({{p3.target_complexity.n_features}} weights): validation R² {{p3.ladder.6.seeded.r2:.4f}} against {{p3.ladder.5.seeded.r2:.4f}} one level below and {{p3.ladder.7.seeded.r2:.4f}} one level above. The other two estimates agree: held-out days {{p3.ladder.5.day_block.r2:.4f}} → {{p3.ladder.6.day_block.r2:.4f}} → {{p3.ladder.7.day_block.r2:.4f}}, chronological {{p3.ladder.5.chrono.r2:.3f}} → {{p3.ladder.6.chrono.r2:.3f}} → {{p3.ladder.7.chrono.r2:.3f}}.

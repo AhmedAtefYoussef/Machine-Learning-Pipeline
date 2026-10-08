@@ -1,0 +1,20 @@
+{
+  "spec_id": "S-8-01",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/common.py", "src/validation.py", "src/gd_asym.py", "src/bonus_control.py", "src/phases/p1.py", "src/phases/p2.py", "src/phases/p3.py", "src/phases/p4.py", "src/phases/p5.py", "src/predict.py", "src/plots.py", "config.yaml", "nb/p1_gd.py", "nb/p3_bias_variance.py", "tests/test_common.py", "tests/test_gd.py", "tests/test_gd_asym.py", "tests/test_validation.py", "artifacts/p1.json", "artifacts/p2.json", "artifacts/p3.json", "artifacts/p4.json", "artifacts/p5.json", "artifacts/p6.json", "artifacts/bonus_control.json", "sample_submission.csv"],
+  "tests": [
+    {"name": "pytest tests", "pass": true, "value": "256 passed"},
+    {"name": "regression_A_power0_vs_v1 (p1,p2,p3, every numeric key)", "pass": true, "value": 0.0},
+    {"name": "leak_scan", "pass": true, "value": "30 files, 0 findings"},
+    {"name": "chain_check", "pass": true, "value": "5/5 artifacts, 0 failures"},
+    {"name": "submission_check", "pass": true, "value": "0 failures, 0 warnings"},
+    {"name": "rerun p1,p2,p3,p5,predict,bonus_control byte-identical", "pass": true, "value": "sha256 equal"},
+    {"name": "notebook check build/check.ipynb", "pass": true, "value": "errors=0 structure_problems=0"}
+  ],
+  "metrics_path": "artifacts/p4.json",
+  "deviations": [],
+  "questions": [],
+  "notes": "Markdown cells of nb/ untouched: only two removed lines, both in code cells (a table label in p1 cell, a row label in p1 control cell); two new markdown stubs added. Placeholder keys that no longer exist: p1.backtransform.candidates.duan.factor, p1.backtransform.candidates.duan.val_mean_ratio, p1.backtransform.candidates.duan.val_r2 (used at nb/p1_gd.py:126 and :223, report/report.template.md:17). Prose that is now factually stale though its keys resolve: p1_gd.py Justification: representation (log1p target), back-transform justification (three corrections, Duan), Outcome (Duan surprise, log-error statements); p1.hour_encoding text; plots_p4.py y-label still says log1p(cnt) scale (not in paths_owned). Ideas: Phase 4 stage A not converged 7 (v1: 5), stage B 0; the p1 bonus eta cap changed from a fixed 20 to target.eta_cap(y) (identical numbers at power 0 in check A). docs/ARCHITECTURE.md and artifacts/first_pass.json show as modified/untracked in git but were not touched by the coder. Phase 4 runtime 1786 s.",
+  "usage_note": "one session, about 45 tool turns; run.py all once (about 33 min wall clock)"
+}

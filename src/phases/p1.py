@@ -1,20 +1,21 @@
-"""Phase 1: linear model for log1p(cnt) fitted with our own gradient descent (ARCHITECTURE sections 1, 3, 6).
+"""Phase 1: linear model for the power-transformed target z = ((cnt + 1)^power - 1) / power (power 0 = log1p), fitted with
+our own gradient descent (ARCHITECTURE sections 1, 3, 6; ADR-017).
 
 Pipeline: seeded split -> 36-column design -> learning rate from lambda_max -> lr sweep -> main GD run ->
 oracle check (least squares) -> back-transform choice -> scores -> residual profile -> hour-encoding ablation
--> asymmetric-cost bonus -> artifacts/p1.json.
+-> exponent table -> asymmetric-cost bonus -> artifacts/p1.json.
 
 Only numpy, pandas and our own src modules are used here (no sklearn in this file).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
 
-from src.common import (back_factor, bootstrap_r2, config_seed, from_target, load_config, load_train, r2, read_artifact,
-                        rmse, seeded_split, set_threads, to_target, write_artifact)
+from src.common import (Target, bootstrap_r2, config_seed, load_config, load_train, r2, read_artifact, rmse,
+                        seeded_split, set_threads, valid_back_methods, write_artifact)
 from src.features import BASE, Design, DesignSpec
 from src.gd import gradient_check, gradient_descent, lambda_max, mse_grad, mse_loss
 from src.gd_asym import asym_grad, asym_loss, fit_asymmetric, operator_costs
@@ -37,17 +38,23 @@ class Split:
     val_df: pd.DataFrame
     cnt_tr: np.ndarray   # bikes, train
     cnt_va: np.ndarray   # bikes, validation
-    z_tr: np.ndarray     # log1p(bikes), train
-    z_va: np.ndarray     # log1p(bikes), validation
+    z_tr: np.ndarray     # target.forward(bikes), train
+    z_va: np.ndarray     # target.forward(bikes), validation
 
 
-def make_split(cfg: dict) -> Split:
-    """The single seeded split of the repo, with the target on the bike scale and the log scale."""
+def config_target(cfg: dict) -> Target:
+    """The target named in config.yaml; the back-transform method is not needed to form z, so it is left at 'none'."""
+    return Target(float(cfg["p1"]["target_power"]), "none")
+
+
+def make_split(cfg: dict, target: Target | None = None) -> Split:
+    """The single seeded split of the repo, with the target on the bike scale and on the z scale of `target`."""
+    target = config_target(cfg) if target is None else target
     seed = config_seed(cfg)
     train_df, val_df = seeded_split(load_train(cfg), seed, cfg["split"]["test_size"])
     cnt_tr = train_df["cnt"].to_numpy(dtype=np.float64)
     cnt_va = val_df["cnt"].to_numpy(dtype=np.float64)
-    return Split(seed, train_df, val_df, cnt_tr, cnt_va, to_target(cnt_tr), to_target(cnt_va))
+    return Split(seed, train_df, val_df, cnt_tr, cnt_va, target.forward(cnt_tr), target.forward(cnt_va))
 
 
 def base_design(split: Split) -> tuple[Design, np.ndarray, np.ndarray]:
@@ -114,18 +121,20 @@ def gradient_check_errors(X, z, seed: int) -> dict:
 
 # ----------------------------------------------------------------------------- back-transform and scores
 
-def bike_predictions(split: Split, X_tr, X_va, w, method: str) -> tuple[float, np.ndarray, np.ndarray]:
-    """(factor, train bikes, validation bikes): exp(eta) * s - 1 with s from the train residuals only."""
+def bike_predictions(split: Split, X_tr, X_va, w, target: Target) -> tuple[float, np.ndarray, np.ndarray]:
+    """(factor, train bikes, validation bikes): s * q(eta) - 1 with s from the train residuals only."""
     eta_tr, eta_va = X_tr @ w, X_va @ w
-    factor = back_factor(method, split.z_tr, eta_tr, split.cnt_tr)
-    return factor, from_target(eta_tr, factor), from_target(eta_va, factor)
+    factor = target.factor(eta_tr, split.cnt_tr)
+    return factor, target.to_bikes(eta_tr, factor), target.to_bikes(eta_va, factor)
 
 
-def backtransform_table(split: Split, X_tr, X_va, w, methods) -> dict:
-    """Validation score of every back-transform candidate; the best val R2 wins (ties go to the first in the list)."""
+def backtransform_table(split: Split, X_tr, X_va, w, target: Target, methods) -> dict:
+    """Validation score of every back-transform candidate valid for this exponent; the best val R2 wins
+    (ties go to the first in the list)."""
+    methods = valid_back_methods(target.power, methods)
     candidates = {}
     for method in methods:
-        factor, _, pred_va = bike_predictions(split, X_tr, X_va, w, method)
+        factor, _, pred_va = bike_predictions(split, X_tr, X_va, w, replace(target, back_method=method))
         candidates[method] = {"factor": factor, "val_r2": r2(split.cnt_va, pred_va),
                               "val_rmse": rmse(split.cnt_va, pred_va),
                               "val_mean_ratio": float(pred_va.mean() / split.cnt_va.mean())}
@@ -136,20 +145,20 @@ def backtransform_table(split: Split, X_tr, X_va, w, methods) -> dict:
     return {"method": best, "factor": candidates[best]["factor"], "candidates": candidates}
 
 
-def model_scores(split: Split, X_tr, X_va, w, method: str) -> dict:
-    """Train/validation R2 and RMSE on the bike scale, R2 on the log scale, and the factor used."""
-    factor, pred_tr, pred_va = bike_predictions(split, X_tr, X_va, w, method)
+def model_scores(split: Split, X_tr, X_va, w, target: Target) -> dict:
+    """Train/validation R2 and RMSE on the bike scale, R2 on the z scale, and the factor used."""
+    factor, pred_tr, pred_va = bike_predictions(split, X_tr, X_va, w, target)
     return {"factor": factor,
             "train_r2": r2(split.cnt_tr, pred_tr), "train_rmse": rmse(split.cnt_tr, pred_tr),
             "val_r2": r2(split.cnt_va, pred_va), "val_rmse": rmse(split.cnt_va, pred_va),
             "train_r2_log": r2(split.z_tr, X_tr @ w), "val_r2_log": r2(split.z_va, X_va @ w)}
 
 
-def oracle_gap(split: Split, X_tr, X_va, w, method: str) -> dict:
+def oracle_gap(split: Split, X_tr, X_va, w, target: Target) -> dict:
     """Closed-form least squares (test oracle only, never used for fitting) against our GD weights."""
     w_exact = np.linalg.lstsq(X_tr, split.z_tr, rcond=None)[0]
-    scores_gd = model_scores(split, X_tr, X_va, w, method)
-    scores_exact = model_scores(split, X_tr, X_va, w_exact, method)
+    scores_gd = model_scores(split, X_tr, X_va, w, target)
+    scores_exact = model_scores(split, X_tr, X_va, w_exact, target)
     return {"label": "oracle: np.linalg.lstsq, used only to check GD",
             "max_abs_weight_diff": float(np.max(np.abs(w - w_exact))),
             "loss_gap": mse_loss(X_tr, split.z_tr, w) - mse_loss(X_tr, split.z_tr, w_exact),
@@ -166,7 +175,7 @@ def _equal_count_bins(values: np.ndarray, resid: np.ndarray, n_bins: int) -> lis
 
 
 def residual_profile(df: pd.DataFrame, resid: np.ndarray) -> dict:
-    """Mean log-scale residual by (workingday, hour) cell and by 10 equal-count temp and hum bins."""
+    """Mean z-scale residual by (workingday, hour) cell and by 10 equal-count temp and hum bins."""
     table = pd.DataFrame({"workingday": df["workingday"].to_numpy(), "hr": df["hr"].to_numpy(), "r": resid})
     cells = table.groupby(["workingday", "hr"])["r"].agg(["mean", "size"]).reset_index()
     by_wd_hr = [{"workingday": int(row.workingday), "hr": int(row.hr), "mean_resid": float(row["mean"]),
@@ -194,7 +203,7 @@ def _standardise(block_tr: np.ndarray, block_va: np.ndarray) -> tuple[np.ndarray
     return (block_tr - mean) / std, (block_va - mean) / std
 
 
-def hour_ablation(split: Split, design: Design, X_tr, X_va, w_main, scores_main, cfg: dict, method: str) -> dict:
+def hour_ablation(split: Split, design: Design, X_tr, X_va, w_main, scores_main, cfg: dict, target: Target) -> dict:
     """Same pipeline with the hour dummies replaced by numeric hr or six harmonics; own GD from zeros, same lr rule."""
     p1 = cfg["p1"]
     keep = [j for j, name in enumerate(design.names) if not name.startswith("hr_")]
@@ -205,10 +214,32 @@ def hour_ablation(split: Split, design: Design, X_tr, X_va, w_main, scores_main,
         A_tr, A_va = np.hstack([X_tr[:, keep], block_tr]), np.hstack([X_va[:, keep], block_va])
         _, _, lr = learning_rate(A_tr, p1["lr_fraction_of_bound"])
         res = run_gd(A_tr, split.z_tr, np.zeros(A_tr.shape[1]), lr, p1["tol_loss"], p1["tol_grad"], p1["max_iter"])
-        scores = model_scores(split, A_tr, A_va, res.weights, method)
+        scores = model_scores(split, A_tr, A_va, res.weights, target)
         out[kind] = {"n_features": A_tr.shape[1], "val_r2": scores["val_r2"], "iterations": res.iterations,
                      "stop_reason": res.stop_reason}
     return out
+
+
+# ----------------------------------------------------------------------------- exponent table
+
+TABLE_BACK_METHOD = "ls"   # every exponent in the table is scored with the least-squares factor
+
+
+def target_power_table(split: Split, X_tr, X_va, cfg: dict) -> list:
+    """The same base design fitted by our own GD from zeros under each candidate exponent (same lr, same stopping rule).
+
+    Shows how the exponent changes the Phase 1 score; the exponent actually used comes from config.yaml (ADR-017)."""
+    p1 = cfg["p1"]
+    _, _, lr = learning_rate(X_tr, p1["lr_fraction_of_bound"])
+    rows = []
+    for power in p1["target_power_candidates"]:
+        target = Target(float(power), TABLE_BACK_METHOD)
+        z_split = replace(split, z_tr=target.forward(split.cnt_tr), z_va=target.forward(split.cnt_va))
+        res = run_gd(X_tr, z_split.z_tr, np.zeros(X_tr.shape[1]), lr, p1["tol_loss"], p1["tol_grad"], p1["max_iter"])
+        scores = model_scores(z_split, X_tr, X_va, res.weights, target)
+        rows.append({"power": float(power), "iterations": res.iterations, "stop_reason": res.stop_reason,
+                     "val_r2": scores["val_r2"], "val_rmse": scores["val_rmse"], "train_r2": scores["train_r2"]})
+    return rows
 
 
 # ----------------------------------------------------------------------------- bonus: asymmetric cost
@@ -228,19 +259,19 @@ def _shift_by_cell(df: pd.DataFrame, pred_mse: np.ndarray, pred_asym: np.ndarray
              "mean_pred_asym": float(r.asym)} for r in cells.itertuples()]
 
 
-def asymmetric_bonus(split: Split, X_tr, X_va, w_mse, cfg: dict) -> dict:
+def asymmetric_bonus(split: Split, X_tr, X_va, w_mse, target: Target, cfg: dict) -> dict:
     """Refit with an under-prediction penalty k on the bike scale, starting from the MSE weights."""
     bonus_cfg = cfg["p1"]["bonus"]
     k = bonus_cfg["k_under"]
-    check = gradient_check(lambda w: asym_loss(X_tr, split.cnt_tr, w, k),
-                           lambda w: asym_grad(X_tr, split.cnt_tr, w, k), w_mse)
-    res = fit_asymmetric(X_tr, split.cnt_tr, w_mse, k=k, max_iter=bonus_cfg["max_iter"],
+    check = gradient_check(lambda w: asym_loss(X_tr, split.cnt_tr, w, target, k),
+                           lambda w: asym_grad(X_tr, split.cnt_tr, w, target, k), w_mse)
+    res = fit_asymmetric(X_tr, split.cnt_tr, w_mse, target, k=k, max_iter=bonus_cfg["max_iter"],
                          tol_loss=bonus_cfg["tol_loss"])
-    pred_mse = from_target(X_va @ w_mse, 1.0)   # both models: exp(Xw) - 1, no factor, clipped at 0
-    pred_asym = from_target(X_va @ res.weights, 1.0)
+    pred_mse = target.to_bikes(X_va @ w_mse, 1.0)   # both models: q(Xw) - 1, no factor, clipped at 0
+    pred_asym = target.to_bikes(X_va @ res.weights, 1.0)
     return {"k": k, "stop_reason": res.stop_reason, "iterations": res.iterations, "gradient_check": check,
             "grad_norm_final": res.grad_norm_final,
-            "train_loss_at_mse_weights": asym_loss(X_tr, split.cnt_tr, w_mse, k),
+            "train_loss_at_mse_weights": asym_loss(X_tr, split.cnt_tr, w_mse, target, k),
             "train_loss_final": res.loss_final,
             "val": {"mse_model": _bike_scale_scores(split.cnt_va, pred_mse, k),
                     "asym_model": _bike_scale_scores(split.cnt_va, pred_asym, k)},
@@ -267,33 +298,37 @@ def run(cfg: dict | None = None) -> dict:
     w = res.weights
     check = gradient_check_errors(X_tr, split.z_tr, split.seed)
 
-    backtransform = backtransform_table(split, X_tr, X_va, w, p1["backtransform_candidates"])
-    method = backtransform["method"]
-    scores = model_scores(split, X_tr, X_va, w, method)
-    _, _, pred_va = bike_predictions(split, X_tr, X_va, w, method)
+    backtransform = backtransform_table(split, X_tr, X_va, w, config_target(cfg), p1["backtransform_candidates"])
+    target = replace(config_target(cfg), back_method=backtransform["method"])
+    scores = model_scores(split, X_tr, X_va, w, target)
+    _, _, pred_va = bike_predictions(split, X_tr, X_va, w, target)
     lo, hi, se = bootstrap_r2(split.cnt_va, pred_va, split.seed, cfg["bootstrap"]["B"])
 
-    bonus = asymmetric_bonus(split, X_tr, X_va, w, cfg)
+    power_table = target_power_table(split, X_tr, X_va, cfg)
+    bonus = asymmetric_bonus(split, X_tr, X_va, w, target, cfg)
     bonus.pop("weights")  # the refit weights are not part of the artifact
 
     payload = {
         "weights": w, "feature_names": design.names, "scaler": design.scaler_dict(), "lr": lr,
         "iterations": res.iterations, "stop_reason": res.stop_reason,
         "train_loss_final": mse_loss(X_tr, split.z_tr, w),
-        "val_r2": scores["val_r2"], "val_rmse": scores["val_rmse"], "target_transform": "log1p",
+        "val_r2": scores["val_r2"], "val_rmse": scores["val_rmse"], "target_transform": "power",
+        "target_power": target.power,
         "design_spec": design.spec.to_dict(), "lambda_max": lam, "lr_bound": bound,
         "lr_fraction": p1["lr_fraction_of_bound"], "condition_number": condition,
         "tol_loss": p1["tol_loss"], "tol_grad": p1["tol_grad"], "max_iter": p1["max_iter"],
         "grad_norm_final": res.grad_norm_final, "gradient_check": check["max"],
         "gradient_check_at_zeros": check["at_zeros"], "gradient_check_at_random": check["at_random"],
         "loss_curve": curve_points(res.loss_history, MAIN_CURVE_POINTS), "lr_sweep": sweep,
-        "oracle": oracle_gap(split, X_tr, X_va, w, method),
+        "oracle": oracle_gap(split, X_tr, X_va, w, target),
         "backtransform": backtransform,
         "train_r2": scores["train_r2"], "train_rmse": scores["train_rmse"],
         "train_r2_log": scores["train_r2_log"], "val_r2_log": scores["val_r2_log"],
         "val_bootstrap": {"lo": lo, "hi": hi, "se": se},
         "residual_profile": residual_profile(split.train_df, split.z_tr - X_tr @ w),
-        "hour_encoding_ablation": hour_ablation(split, design, X_tr, X_va, w, scores, cfg, method),
+        "hour_encoding_ablation": hour_ablation(split, design, X_tr, X_va, w, scores, cfg, target),
+        "target_power_table": power_table,
+        "target_power_best_here": max(power_table, key=lambda row: row["val_r2"])["power"],
         "bonus": bonus,
         "n_train": len(split.train_df), "n_val": len(split.val_df), "n_features": X_tr.shape[1],
     }
