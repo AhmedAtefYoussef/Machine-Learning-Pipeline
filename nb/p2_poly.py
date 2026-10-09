@@ -30,18 +30,16 @@
 # The expanded design keeps the 35 Phase 1 columns in the same positions and with the Phase 1 scaler (read from `artifacts/p1.json`, not refitted). Each new column gets its own training mean and standard deviation. The longer weight vector is the Phase 1 vector with zeros in the new positions. A zero weight switches a column off, so the expanded model starts as exactly the Phase 1 model: its first loss must equal Phase 1's last loss. The cell below checks this to 1e-9. Starting there instead of at random also means gradient descent only has to learn the correction that the new columns allow.
 
 # %%
-p2 = phase("p2", p2mod.run, upstream="p1", live=True)   # reads artifacts/p1.json and fits Phase 2, here and now
-difference = p2["init_loss"] - p1["train_loss_final"]
-print("Phase 1 final training loss :", repr(p1["train_loss_final"]))
-print("Phase 2 initial loss        :", repr(p2["init_loss"]))
-print("difference                  :", difference)
-assert abs(difference) <= 1e-9, "the hand-over from Phase 1 to Phase 2 is broken"
-print("hand-over check passed (|difference| <= 1e-9)")
-
-# %%
-# How the Phase 1 weights are placed into the longer Phase 2 vector (src/poly.py).
+# Phase 2 starts from the Phase 1 weights, so its first loss must equal Phase 1's last loss (the hand-over).
+import src.phases.p2 as p2mod
 from src.poly import lift_weights
 
+p2 = phase("p2", p2mod.run, CFG, upstream="p1", live=True, recompute_all=RECOMPUTE_ALL)   # reads artifacts/p1.json, fits Phase 2 here and now
+assert abs(p2["init_loss"] - p1["train_loss_final"]) <= 1e-9, "the hand-over from Phase 1 to Phase 2 is broken"
+view.p2_handover(p1, p2)
+
+# %%
+# How the Phase 1 weights are placed into the longer Phase 2 vector.
 show_source(lift_weights)
 
 # %% [markdown]
@@ -52,51 +50,36 @@ show_source(lift_weights)
 # - **Not expanded.** Hour dummies, weather dummies and `holiday` are 0/1, so their powers are themselves. `trend` is not raised to a power, because a polynomial in time bends away sharply outside the observed dates. The day-of-year terms are already non-linear.
 
 # %%
-print("blocks      :", p2["blocks"])
-print("power cols  :", p2["power_cols"])
-print("columns     :", len(p2["feature_names"]), "(", len(p2["expanded_feature_names"]), "new )")
-print("new columns :", ", ".join(p2["expanded_feature_names"][:6]), "...")
-print("lambda_max  :", round(p2["lambda_max"], 4), "| lr:", round(p2["lr"], 4),
-      "| condition number:", round(p2["condition_number"], 1))
+# The expanded design: which blocks and power columns, how many new columns, and how hard it is to optimise.
+view.p2_design(p2)
 
 # %% [markdown]
 # ### Justification: degree
 # "Degree" is the highest total degree of any term: the interaction products are degree 2 and the powers go up to the chosen degree. With every candidate fitted by our own gradient descent from the Phase 1 weights, validation R² is {{p2.degree_sweep.0.val_r2:.4f}} at degree 1 (interactions only), {{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3 and {{p2.degree_sweep.3.val_r2:.4f}} at degree 4. Our rule, fixed before the run, is the smallest degree within {{p2.plateau_tol}} of the best: degree {{p2.degree}}. The square captures "warmer is better", the cube captures the flattening at high temperature; a fourth power adds nothing. The learning rate is again half the stability bound, recomputed for this design (λ_max {{p2.lambda_max:.3f}}, lr {{p2.lr:.4f}}), with the same stopping rule as Phase 1.
 
 # %%
-rows = pd.DataFrame(p2["degree_sweep"])[["degree", "n_features", "iterations", "stop_reason", "train_r2", "val_r2"]]
-print(rows.round(4).to_string(index=False))
-print("chosen degree:", p2["degree"], "(smallest within", p2["plateau_tol"], "of the best validation R2)")
+# Validation R² for each candidate degree (the highlighted row is our choice).
+view.p2_degree_sweep(p2)
 
 # %%
-from src.plots import show  # displays a figure as a PNG in the notebook
+# The same sweep as a plot.
 show(plots.plot_degree_sweep(p2))
 
 # %%
-cols = pd.DataFrame(p2["power_col_sweep"])[["power_cols", "n_features", "iterations", "stop_reason", "train_r2", "val_r2"]]
-cols["power_cols"] = cols["power_cols"].apply(lambda c: ", ".join(c))
-print(cols.round(4).to_string(index=False))
-print("chosen power columns:", p2["power_cols"])
+# Which variables get powers: temperature alone, or humidity and wind as well.
+view.p2_power_cols(p2)
 
 # %%
-ablation = p2["block_ablation"]["without_wd_x_hr"]
-print("without the workingday x hour block:", ablation["n_features"], "columns, validation R2",
-      round(ablation["val_r2"], 4), "(train", round(ablation["train_r2"], 4), ")")
-print("with the block                     :", len(p2["feature_names"]), "columns, validation R2",
-      round(p2["val_r2"], 4), "(train", round(p2["train_r2"], 4), ")")
+# What the working-day x hour block adds.
+view.p2_ablation(p2)
 
 # %%
-paired = p2["paired_vs_p1"]
-boot = p2["val_bootstrap"]
-final = pd.DataFrame({"R2": [p1["val_r2"], p2["val_r2"]], "RMSE": [p1["val_rmse"], p2["val_rmse"]]},
-                     index=["Phase 1", "Phase 2"])
-print(final.round(4).to_string())
-print(f"Phase 2 validation R2 95% interval: [{boot['lo']:.4f}, {boot['hi']:.4f}]")
-print(f"gain over Phase 1: {paired['delta']:.4f}, paired 95% interval [{paired['lo']:.4f}, {paired['hi']:.4f}]")
-print("stop reason:", p2["stop_reason"], "after", p2["iterations"], "iterations; oracle max weight difference:",
-      p2["oracle"]["max_abs_weight_diff"])
+# Phase 2 against Phase 1 on the validation rows, and how the run ended.
+display(view.p2_scores(p1, p2))
+display(view.p2_fit(p2))
 
 # %%
+# The residuals by hour and day type before (Phase 1) and after (Phase 2) the expansion.
 show(plots.plot_residual_profile(p1, p2))
 
 # %% [markdown]

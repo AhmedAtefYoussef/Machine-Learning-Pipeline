@@ -4,7 +4,7 @@ seed 44615 (IDs 16007032, 16009837, 16006283; confirmed by the user as the regis
 env: Windows, `python` 3.14, no make/pandoc → `python run.py <target>` (all | p1..p5 | submission | nb | report | verify-fast | verify | fingerprint). Phase 4 ≈ 20 min; the notebook loads the stored p4/p5 artifacts when config and upstream are unchanged.
 
 ## Deliverables (repo root)
-`rush_hour.ipynb` (128 cells, executed, 0 errors; self-contained: runs on Colab with only train.csv and test.csv) · `report.pdf` = `report/report.pdf` (5 pages; source report/report.template.md, numbers traced) · `sample_submission.csv` (574 rows) · `docs/WALKTHROUGH.md`
+`rush_hour.ipynb` (129 cells, executed, 0 errors; self-contained: runs on Colab with only train.csv and test.csv; cells call `src/nbview.py` tables and `src/plots*.py` figures styled by `src/plotstyle.py`, helpers in `src/nbtools.py`, collapsed setup cell via `tools/polish_nb.py`) · `report.pdf` = `report/report.pdf` (5 pages; describes the finalized pipeline only, at the user's request; source report/report.template.md, numbers traced) · `sample_submission.csv` (574 rows) · `docs/WALKTHROUGH.md`
 
 ## Two passes
 - First pass (tag `v1-submitted`): log1p target. Key numbers kept in `artifacts/first_pass.json`.

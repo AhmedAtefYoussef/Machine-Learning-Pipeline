@@ -10,85 +10,45 @@
 # **What the model cannot adapt to.** It extrapolates growth as a straight line on the transformed scale, which Phase 3 showed to be somewhat too steep beyond the observed period; it has never seen a zero-demand hour, weather outside the observed range, or holidays other than those in the training days. For the hidden days, which lie inside the two observed years, the held-out-day estimate of Phase 4 ({{p4.recommended.day_block_r2:.3f}}) is our best guess of the score; for a genuinely later period we would expect something nearer the chronological estimate ({{p4.recommended.chrono_r2:.3f}}).
 
 # %%
-# Phase 6 reads artifacts/p4.json (the recommended regression model on the surviving columns), refits it on training
-# plus validation rows and predicts the hidden days. It does not re-run any earlier phase.
-import numpy as np
-import pandas as pd
-
+# Phase 6 refits the recommended Phase 4 model on training plus validation rows and predicts the hidden days; it re-runs no earlier phase.
 from src import predict
-from src.common import config_seed, load_config, load_test, load_train, read_artifact, sha256_file
-from src.plots_p5 import plot_test_profile
+from src.common import load_test, read_artifact
 
-CFG = globals().get("CFG") or load_config()
-p6 = predict.run(CFG)  # writes sample_submission.csv and artifacts/p6.json
+p6 = predict.run(CFG)   # writes sample_submission.csv and artifacts/p6.json
 
 # %%
 # What was submitted and how it compares with the model that was validated (model A, training rows only).
-summary = {
-    "model (Phase 4 recommended)": p6["model"]["method"],
-    "lambda": p6["model"]["lambda"],
-    "l1_ratio": p6["model"]["l1_ratio"],
-    "refit on": p6["refit_on"],
-    "rows used to fit": p6["n_fit_rows"],
-    "rows predicted": p6["n_test_rows"],
-    "model A reproduces the Phase 4 weights (max gap)": p6["model_a_gap_to_p4"],
-    "prediction mean": p6["pred"]["mean"],
-    "prediction median": p6["pred"]["median"],
-    "prediction min": p6["pred"]["min"],
-    "prediction max": p6["pred"]["max"],
-    "predictions below 1 bike": p6["pred"]["n_below_1"],
-    "predictions clipped at 0": p6["pred"]["n_clipped"],
-    "mean cnt of the training rows": p6["train_cnt_mean"],
-    "A versus B on the hidden rows: correlation": p6["a_vs_b_on_test"]["corr"],
-    "A versus B: mean ratio B / A": p6["a_vs_b_on_test"]["mean_ratio"],
-    "A versus B: mean absolute difference": p6["a_vs_b_on_test"]["mean_abs_diff"],
-    "A versus B: largest absolute difference": p6["a_vs_b_on_test"]["max_abs_diff"],
-    "profile ratio min / max (per day type and hour)": f"{p6['profile_ratio']['min']:.3f} / {p6['profile_ratio']['max']:.3f}",
-    "cells outside 0.4-2.5": p6["profile_ratio"]["cells_outside_0_4_2_5"],
-    "daily-total ratio min / max": f"{p6['daily_total_ratio']['min']:.3f} / {p6['daily_total_ratio']['max']:.3f}",
-    "mean prediction 2011 / 2012": f"{p6['by_year_mean']['0']:.1f} / {p6['by_year_mean']['1']:.1f}",
-}
-print(pd.Series(summary, name="value").to_string())
+view.p6_summary(p6)
 
 # %%
-labelled_df, test_df = load_train(CFG), load_test(CFG)
+# The predicted hourly profile of the hidden days against the profile of the training days.
+test_df = load_test(CFG)
 sub = pd.read_csv(predict.SUBMISSION_PATH)
-from src.plots import show  # displays a figure as a PNG in the notebook
-show(plot_test_profile(labelled_df, test_df, sub))
+show(plots_p5.plot_test_profile(train_all, test_df, sub))
 
 # %%
-# The same checks as tools/submission_check.py, inline (hard failures are asserts).
+# The same checks as tools/submission_check.py, inline: any failure stops the notebook.
 assert list(sub.columns) == ["instant", "cnt"], list(sub.columns)
 assert len(sub) == len(test_df), (len(sub), len(test_df))
 assert (sub["instant"].to_numpy() == test_df["instant"].to_numpy()).all(), "row order differs from the hidden file"
 assert np.isfinite(sub["cnt"].to_numpy(dtype=float)).all(), "NaN or inf in cnt"
 assert (sub["cnt"] >= 0).all(), "negative predictions"
 assert not (sub["cnt"] == 0).all(), "all predictions are 0"
-print("submission:", sub.shape, "| columns", list(sub.columns), "| order equals the hidden file | no NaN | no negatives")
-print("cells outside the 0.4-2.5 band of the training profile:", p6["profile_ratio"]["cells_outside_0_4_2_5"],
-      "| daily totals vs same-month training days:", round(p6["daily_total_ratio"]["min"], 2), "to",
-      round(p6["daily_total_ratio"]["max"], 2))
+view.p6_submission(sub, p6)
 
 # %%
-# All chain assertions in one table: hash chain p1 -> p6, shared seed, Phase 2 start loss = Phase 1 final loss,
-# Phase 5 features among the Phase 4 survivors, model A reproduces Phase 4.
+# All chain assertions in one table: hash chain p1 to p6, one shared seed, the hand-overs between phases.
 arts = {name: read_artifact(name) for name in ("p1", "p2", "p3", "p4", "p5", "p6")}
-checks = []
-for prev, name in zip(("p1", "p2", "p3", "p4", "p5"), ("p2", "p3", "p4", "p5", "p6")):
-    checks.append((f"{name}.upstream_sha256 == sha256(artifacts/{prev}.json)",
-                   arts[name]["upstream_sha256"] == sha256_file(f"artifacts/{prev}.json")))
-checks.append(("p1 has no upstream", arts["p1"]["upstream_sha256"] is None))
-checks.append(("same seed in p1..p6 and equal to the seed of the config",
-               {a["seed"] for a in arts.values()} == {config_seed(CFG)}))
-checks.append(("p2 starts from the p1 weights", arts["p2"]["init_weights_source"] == "p1"))
-checks.append(("p2.init_loss == p1.train_loss_final (1e-9)",
-               abs(arts["p2"]["init_loss"] - arts["p1"]["train_loss_final"]) <= 1e-9 * max(1.0, arts["p1"]["train_loss_final"])))
-checks.append(("p5.features are a subset of p4.survivors_expanded",
-               set(arts["p5"]["features"]) <= set(arts["p4"]["survivors_expanded"])))
-checks.append(("p4.recommended was fitted on the survivors, p6 uses the same columns",
-               arts["p4"]["recommended"].get("fitted_on") == "survivors"))
-checks.append(("model A reproduces the p4 weights (< 1e-6)", arts["p6"]["model_a_gap_to_p4"] < 1e-6))
-checks.append(("p5 chosen model converged", arts["p5"]["stop_reason"] == "converged"))
-report = pd.DataFrame(checks, columns=["assertion", "holds"])
-print(report.to_string(index=False))
-assert report["holds"].all(), "a chain assertion failed"
+rows = view.p6_chain_rows(arts, CFG)
+assert all(passed for *_, passed in rows), "a chain assertion failed"
+view.checks(rows, "Chain assertions")
+
+# %% [markdown]
+# ### The pipeline at a glance
+#
+# One line per phase, built from the five artifact files: what each phase consumed, what it handed on, and the score of the model it ended with. This is the same table as the retrospective in Phase 5, placed here so that the notebook ends with the whole chain in view.
+
+# %%
+# The whole chain in one table and one figure.
+display(view.pipeline_summary(p1, p2, p3, p4, p5))
+show(plots.plot_pipeline_summary(p1, p2, p3, p4))

@@ -14,7 +14,6 @@
 # 5. *The time question.* We expect the seeded estimate and the held-out-day estimate to be almost equal (within 0.005). Our model has no way to memorise a particular day, so sharing days between training and validation should hardly help it. The chronological estimate should be clearly lower, by 0.04–0.08, because the model has to extrapolate a growth trend into six months it has never seen, having observed July–December only once.
 # 6. *Which estimate to trust.* For the hidden test set, which is the 20th of each month and so lies inside the observed period, the held-out-day estimate is the right one. For genuinely future months the chronological estimate is the honest one. We expect the diagnosis to stay "bias first, variance only at the top of the ladder" under all three, but the chronological split should prefer a simpler model than the seeded split does, especially disliking the blocks that let the trend vary by hour.
 
-
 # %% [markdown]
 # ## Expectation — Phase 3, second pass
 #
@@ -42,56 +41,39 @@
 # - **Note on level C6.** This level was not in our first ladder. After the first complete run we looked at where the C5 model's errors were (working-day rush hours and rainy hours carried about half and a fifth of the squared error) and added the terms that address them: squares and cubes of humidity, wind terms, a temperature effect per working-day hour, and the weather situation one hour earlier and the worst of the previous three hours (wet roads keep riders away after the rain has stopped). These last columns use the weather of neighbouring rows, never their counts. Because this level was designed after looking at validation errors, we judge it mainly by the two estimates that were not used to design it.
 
 # %%
-# Phase 3 runs everything from artifacts/p1.json and artifacts/p2.json; CFG comes from the setup notebook.
-import pandas as pd
-
-from src.common import load_config, read_artifact
+# Phase 3 builds a ladder of designs on top of the Phase 2 artifact and scores each one three ways.
+from src import plots_p3
 from src.phases import p3 as p3mod
-from src.plots_p3 import plot_degree_axis, plot_ladder, plot_learning_curves, plot_three_estimates
 
-p3 = phase("p3", p3mod.run, upstream="p2", live=True)  # runs Phase 3 here and now (about 15 seconds)
-
-# %%
-# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R2.
-p2 = read_artifact("p2")
-print("Phase 2 degree:", p2["degree"], "| features (with bias):", len(p2["feature_names"]))
-print("Phase 2 power columns:", p2["power_cols"], "| blocks:", p2["blocks"])
-print("Phase 2 validation R2 (gradient descent):", round(p2["val_r2"], 5))
-print("anchor validation R2 (closed form here): ", round(p3["ladder"][p3["anchor"]["anchor_index"]]["seeded"]["r2"], 5))
-print("anchor_check (closed form - gradient descent):", f"{p3['anchor_check']:.2e}")
-print("back-transform method reused from Phase 1:", p3["back_method"])
+p3 = phase("p3", p3mod.run, CFG, upstream="p2", live=True, recompute_all=RECOMPUTE_ALL)   # runs Phase 3 here and now (about 15 seconds)
 
 # %%
-# Complexity ladder: three validators per level.
-ladder = pd.DataFrame([{"level": r["name"], "weights": r["n_features"], "train_r2": r["seeded"]["train_r2"],
-                        "seeded_r2": r["seeded"]["r2"], "gap": r["gap_seeded"], "day_block_r2": r["day_block"]["r2"],
-                        "day_block_sd": r["day_block"]["sd"], "chrono_r2": r["chrono"]["r2"]} for r in p3["ladder"]])
-print(ladder.round(4).to_string(index=False))
-print("target level:", p3["target_level"], "| best on held-out days:", p3["best_level_day_block"],
-      "| best chronologically:", p3["best_level_chrono"], "| over-fit from level:", p3["overfit_from_level"])
+# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R².
+view.p3_chain(p2, p3)
 
 # %%
-from src.plots import show  # displays a figure as a PNG in the notebook
-show(plot_ladder(p3))
+# The complexity ladder, with the three validators for every level (the highlighted row is the target level).
+view.p3_ladder(p3)
 
 # %%
-# Degree axis: anchor blocks and power columns fixed, only the degree changes.
-degrees = pd.DataFrame([{"degree": r["degree"], "weights": r["n_features"], "train_r2": r["seeded"]["train_r2"],
-                         "seeded_r2": r["seeded"]["r2"], "day_block_r2": r["day_block"]["r2"],
-                         "chrono_r2": r["chrono"]["r2"]} for r in p3["degree_axis"]])
-print(degrees.round(4).to_string(index=False))
-print("range of seeded R2 over degrees >= 2:", round(p3["diagnosis"]["degree_axis_range"], 5))
+# The same ladder as a plot.
+show(plots_p3.plot_ladder(p3))
 
 # %%
-show(plot_degree_axis(p3))
+# The degree axis alone: anchor blocks and power columns fixed, only the degree changes.
+view.p3_degree_axis(p3)
 
 # %%
-# Learning curves for the anchor, the target and the top of the ladder (clipped at R2 = -0.2 in the plot).
-curves = pd.DataFrame([{"design": key, **c} for key, curve in p3["learning_curves"].items() for c in curve])
-print(curves.round(4).to_string(index=False))
+# The degree axis as a plot.
+show(plots_p3.plot_degree_axis(p3))
 
 # %%
-show(plot_learning_curves(p3))
+# Learning curves for the anchor, the target and the top of the ladder.
+view.p3_learning_curves(p3)
+
+# %%
+# The learning curves as a plot.
+show(plots_p3.plot_learning_curves(p3))
 
 # %% [markdown]
 # ### Justification: the chronological cut
@@ -99,19 +81,12 @@ show(plot_learning_curves(p3))
 # We train on every date before {{p3.cut_date}} ({{p3.chrono_detail.anchor.n_early}} rows) and validate on every date from then on ({{p3.chrono_detail.anchor.n_late}} rows, about a quarter of the file). We put the cut there for three reasons: the held-out part is about the same size as our seeded validation set, so the two estimates are comparably precise; it covers half a seasonal cycle (summer to winter) instead of one season; and the training part still contains one full year plus the first half of the second, so the model has seen each month at least once. A later cut would test only autumn and winter; an earlier one would leave too little of 2012 to learn the growth from.
 
 # %%
-# Three estimates for the anchor and the target, their gaps, and the bootstrap interval of the seeded estimate.
-rows = []
-for label, est, gaps in (("anchor", p3["estimates"], p3["gaps"]["anchor"]),
-                         ("target", p3["estimates_target"], p3["gaps"]["target"])):
-    rows.append({"design": label, "seeded": est["seeded"]["r2"], "ci_lo": est["seeded"]["lo"],
-                 "ci_hi": est["seeded"]["hi"], "day_holdout": est["day_holdout"]["r2"],
-                 "day_sd": est["day_holdout"]["sd"], "chrono": est["chrono"]["r2"],
-                 "leakage_gap": gaps["leakage"], "drift_gap": gaps["drift"]})
-print(pd.DataFrame(rows).round(4).to_string(index=False))
-print("paired gain target - anchor (seeded):", {k: round(v, 4) for k, v in p3["paired_target_vs_anchor"].items()})
+# The anchor and the target scored by the seeded split, held-out days and the chronological split, with their gaps.
+view.p3_estimates(p3)
 
 # %%
-show(plot_three_estimates(p3))
+# The same estimates as a plot.
+show(plots_p3.plot_three_estimates(p3))
 
 # %% [markdown]
 # ### Justification: which estimate to trust
@@ -123,24 +98,15 @@ show(plot_three_estimates(p3))
 
 # %%
 # Chronological detail: the late period has a much higher level of demand (growth) than the early one.
-detail = pd.DataFrame(p3["chrono_detail"]).T
-print(detail.to_string())
-print("r2_level_corrected rescales late predictions by the late period's own mean: a diagnostic of level drift only, "
-      "not a usable estimate.")
+view.p3_chrono_detail(p3)
 
 # %%
-# How much variance is left once the design cells are fully known? (an optimistic ceiling)
-for key, value in p3["noise_floor"].items():
-    print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
+# How much variance is left once the design cells are fully known (an optimistic ceiling).
+view.p3_noise_floor(p3)
 
 # %%
-# Diagnosis and target complexity.
-for key, value in p3["diagnosis"].items():
-    print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
-target = p3["target_complexity"]
-print("target:", target["level"], "| weights:", target["n_features"], "| degree:", target["degree"],
-      "| power columns:", target["power_cols"])
-print("blocks:", target["blocks"])
+# The diagnosis, and the complexity we carry forward.
+view.p3_diagnosis(p3)
 
 # %% [markdown]
 # ### Justification: exponent check
@@ -149,11 +115,8 @@ print("blocks:", target["blocks"])
 
 # %%
 # The target design in closed form under each candidate exponent (the chain itself uses the exponent from Phase 1).
-exponents = pd.DataFrame(p3["target_power_check"]).set_index("power")
-print(exponents.round(4).to_string())
-print("exponent used:", p3["target_power_used"], "| best seeded R2 at:", p3["target_power_best_seeded"],
-      "| consistent within the plateau tolerance:", p3["target_power_consistent"])
-show(plots.plot_target_power(read_artifact("p1"), p3))
+display(view.p3_exponents(p3))
+show(plots.plot_target_power(p1, p3))
 
 # %% [markdown]
 # ### Justification: target complexity

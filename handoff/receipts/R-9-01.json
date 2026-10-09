@@ -1,0 +1,12 @@
+{
+  "spec_id": "S-9-01",
+  "agent": "coder",
+  "status": "done",
+  "files_changed": ["src/plotstyle.py", "src/nbview.py", "src/nbtools.py", "src/plots.py", "src/plots_p3.py", "src/plots_p4.py", "src/plots_p5.py", "nb/p0_setup.py", "nb/p1_gd.py", "nb/p2_poly.py", "nb/p3_bias_variance.py", "nb/p4_regularization.py", "nb/p5_logistic.py", "nb/p6_submission.py", "tools/polish_nb.py", "run.py", "tests/test_nbview.py", "rush_hour.ipynb"],
+  "tests": [{"name": "pytest tests", "pass": true, "value": 313}, {"name": "verify-fast", "pass": true, "value": 0}, {"name": "run.py nb", "pass": true, "value": "errors=0 structure_problems=0"}, {"name": "standalone_check", "pass": true, "value": "errors=0, submission identical"}],
+  "metrics_path": "artifacts/p1.json",
+  "deviations": ["End labels (direct labels) omitted on figures whose lines run together (ladder, degree axis, residual profile, validation curves, CV, threshold scores, test profile); a legend is on every multi-series figure.", "Added helpers plotstyle.legend/label_axes/baseline and nbtools.p1_live_run (moves the live Phase 1 run out of the cell).", "p4 'chosen penalty' and 'fair comparison' tables are now one p4_methods table (shown once, in the chosen-penalty cell); the fair-comparison cell shows the paired differences."],
+  "questions": [],
+  "notes": "60 view functions in nbview. plot_threshold_curve had twinx: split into two panels. Notebook runtime about 40 s. artifacts and sample_submission.csv unchanged (git status clean for them). Only differences in number preservation: counts printed as floats before (2834.0000 etc.) now integers.",
+  "usage_note": "one session"
+}

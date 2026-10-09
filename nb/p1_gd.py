@@ -51,20 +51,19 @@
 # - **Scaling.** Every column is standardised with the training mean and standard deviation only.
 
 # %%
-p1 = phase("p1", p1mod.run, live=True)   # fits Phase 1 from scratch, here and now
-print("training rows        :", p1["n_train"], "| validation rows:", p1["n_val"])
-print("columns (with bias)  :", p1["n_features"])
-print("target               :", p1["target_transform"])
-print("first columns        :", ", ".join(p1["feature_names"][:4]), "...")
-print("lambda_max of X'X/n  :", round(p1["lambda_max"], 4))
-print("stability bound 2/lambda_max:", round(p1["lr_bound"], 4))
-print("learning rate used   :", round(p1["lr"], 4), "=", p1["lr_fraction"], "x bound")
-print("condition number     :", round(p1["condition_number"], 1))
+# Phase 1 is fitted from scratch here and now; the table shows the design and the learning rate it was given.
+import src.phases.p1 as p1mod
+from src import bonus_control
+from src.common import Target
+from src.gd import gradient_descent, mse_grad, mse_loss
+from src.gd_asym import asym_grad, asym_loss
+from src.nbtools import p1_live_run
+
+p1 = phase("p1", p1mod.run, CFG, live=True, recompute_all=RECOMPUTE_ALL)   # fits Phase 1 from scratch, here and now
+view.p1_design(p1)
 
 # %%
-# The target transform of the whole chain, as implemented (src/common.py): forward, inverse, factor, back to bikes.
-from src.common import Target
-
+# The target transform of the whole chain, as implemented: forward, inverse, factor, back to bikes.
 show_source(Target)
 
 # %% [markdown]
@@ -74,20 +73,13 @@ show_source(Target)
 # agreement to many decimal places rather than bit for bit.
 
 # %%
-live_split = p1mod.make_split(CFG)
-_, live_X, _ = p1mod.base_design(live_split)
-_, _, live_lr = p1mod.learning_rate(live_X, CFG["p1"]["lr_fraction_of_bound"])
-live = p1mod.run_gd(live_X, live_split.z_tr, np.zeros(live_X.shape[1]), live_lr, CFG["p1"]["tol_loss"],
-                    CFG["p1"]["tol_grad"], CFG["p1"]["max_iter"])
-print("live run :", live.stop_reason, "after", live.iterations, "iterations at lr", round(live_lr, 4))
-print("stored   :", p1["stop_reason"], "after", p1["iterations"], "iterations at lr", round(p1["lr"], 4))
-print("largest difference between live and stored weights:", float(np.abs(live.weights - np.array(p1["weights"])).max()))
+# The core of Phase 1 once more: our gradient descent from zero weights, compared with the stored weights.
+live, live_lr = p1_live_run(CFG)
+display(view.p1_live_check(p1, live, live_lr))
 assert np.allclose(live.weights, p1["weights"], atol=1e-8), "the live Phase 1 run does not reproduce the stored weights"
 
 # %%
-# Our gradient descent, exactly as it runs above (src/gd.py): the loss, its gradient, and the loop.
-from src.gd import gradient_descent, mse_grad, mse_loss
-
+# Our gradient descent, exactly as it runs above: the loss, its gradient, and the loop.
 show_source(mse_loss, mse_grad, gradient_descent)
 
 # %% [markdown]
@@ -98,29 +90,21 @@ show_source(mse_loss, mse_grad, gradient_descent)
 # - **Start.** Zero weights, so anyone who re-runs this cell gets exactly the same weight vector.
 
 # %%
-sweep = pd.DataFrame([{"fraction of bound": r["fraction"], "lr": r["lr"], "stop": r["stop_reason"],
-                       "iterations": r["iterations"], "final loss": r["loss_final"]} for r in p1["lr_sweep"]])
-print(sweep.round(4).to_string(index=False))
+# Six learning rates, from far too small to too large, and what each one does.
+view.p1_lr_sweep(p1)
 
 # %%
-from src.plots import show  # displays a figure as a PNG in the notebook
+# The same sweep as loss curves.
 show(plots.plot_lr_sweep(p1))
 
 # %%
-print("stop reason :", p1["stop_reason"])
-print("iterations  :", p1["iterations"])
-print("final loss  :", round(p1["train_loss_final"], 6))
-print("gradient norm at the end:", p1["grad_norm_final"], "(tolerance", p1["tol_grad"], ")")
+# How the final run ended, and its loss curve.
+display(view.p1_fit(p1))
 show(plots.plot_loss_curve(p1))
 
 # %%
-oracle = p1["oracle"]
-print(oracle["label"])
-print("largest weight difference:", oracle["max_abs_weight_diff"])
-print("loss gap (GD minus exact):", oracle["loss_gap"])
-print("validation R2 difference :", oracle["val_r2_diff"])
-print("gradient check (max relative error): at zeros", p1["gradient_check_at_zeros"],
-      "| at a random point", p1["gradient_check_at_random"])
+# Correctness: the exact least-squares solution is the reference that gradient descent should reach.
+view.p1_oracle(p1)
 
 # %% [markdown]
 # ### Justification: back-transform
@@ -128,10 +112,8 @@ print("gradient check (max relative error): at zeros", p1["gradient_check_at_zer
 # The inverse transform of an average is not the average count: without a correction the model's predictions are {{p1.backtransform.candidates.none.val_mean_ratio:.3f}} of the true mean on validation. We compared two options, each fitted on the training rows and judged on validation: no factor (R² {{p1.backtransform.candidates.none.val_r2:.4f}}) and a least-squares factor s = Σ(cnt+1)·q / Σq² = {{p1.backtransform.candidates.ls.factor:.3f}}, the single multiplier of q = (λz + 1)^(1/λ) that minimises squared error on bikes (R² {{p1.backtransform.candidates.ls.val_r2:.4f}}, mean ratio {{p1.backtransform.candidates.ls.val_mean_ratio:.3f}}). We keep the least-squares factor. In our first pass, with the log target, we also tried Duan's smearing factor, the textbook correction for a log model: it lowered validation R² from {{first_pass.p1.none_val_r2:.3f}} to {{first_pass.p1.duan_val_r2:.3f}}, because the large log-errors sit in quiet night hours while the factor inflates the peaks. Duan's factor is defined for the log only, so it is not in this table. The method is fixed for every later phase; each phase recomputes the factor from its own training residuals.
 
 # %%
-candidates = pd.DataFrame(p1["backtransform"]["candidates"]).T
-candidates.index.name = "method"
-print(candidates.round(4).to_string())
-print("chosen:", p1["backtransform"]["method"], "with factor", round(p1["backtransform"]["factor"], 4))
+# The two back-transform options, each fitted on the training rows and judged on the validation rows.
+view.p1_backtransform(p1)
 
 # %% [markdown]
 # ### Justification: target transform
@@ -145,25 +127,20 @@ print("chosen:", p1["backtransform"]["method"], "with factor", round(p1["backtra
 # - **Honesty note.** This choice was made from a full earlier run, not from this phase alone. We say so because the brief asks for our expectations to be written first: the second-pass Expectation cell above was committed before this run.
 
 # %%
-# The same base design fitted by our own gradient descent under each candidate exponent (0 = log, 1 = raw counts).
-power_table = pd.DataFrame(p1["target_power_table"]).set_index("power")
-print(power_table.round(4).to_string())
-print("exponent used (config.yaml):", p1["target_power"], "| best exponent for this design:", p1["target_power_best_here"])
+# The same design under each candidate exponent of the target transform (0 = log, 1 = raw counts).
+display(view.p1_target_power(p1))
 show(plots.plot_target_power(p1))
 
 # %%
-boot = p1["val_bootstrap"]
-scores = pd.DataFrame({"R2": [p1["train_r2"], p1["val_r2"]], "RMSE": [p1["train_rmse"], p1["val_rmse"]],
-                       "R2 on the target z": [p1["train_r2_log"], p1["val_r2_log"]]}, index=["train", "validation"])
-print(scores.round(4).to_string())
-print(f"validation R2 95% interval: [{boot['lo']:.4f}, {boot['hi']:.4f}] (standard error {boot['se']:.4f})")
+# Scores of the Phase 1 model on the training and validation rows.
+view.p1_scores(p1)
 
 # %%
-ablation = pd.DataFrame(p1["hour_encoding_ablation"]).T[["n_features", "val_r2", "iterations", "stop_reason"]]
-ablation.index.name = "hour encoding"
-print(ablation.to_string())
+# Three ways to encode the hour of day.
+view.p1_hour_encoding(p1)
 
 # %%
+# What is left over: the residuals by hour and day type.
 show(plots.plot_residual_profile(p1))
 
 # %% [markdown]
@@ -178,20 +155,15 @@ show(plots.plot_residual_profile(p1))
 # **Optimiser.** This loss is no longer a quadratic, so the fixed-step bound of the MSE model does not apply. We keep plain gradient descent but choose each step by backtracking (halve the step until the loss decreases enough), starting from the Phase 1 MSE weights. It stopped as "{{p1.bonus.stop_reason}}" after {{p1.bonus.iterations}} iterations. The absolute-error version of the same cost is shown in the table as a sensitivity check. This model is a side study: Phase 2 receives the MSE weights.
 
 # %%
-bonus = p1["bonus"]
-compare = pd.DataFrame(bonus["val"]).T[["sq_cost", "abs_cost", "under_share", "mean_error", "r2", "rmse", "mean_pred"]]
-print(f"asymmetric cost with k = {bonus['k']:g}: {bonus['iterations']} iterations, stop reason {bonus['stop_reason']}")
-print("gradient check of the asymmetric loss:", bonus["gradient_check"])
-print(compare.round(4).to_string())
-print("mean prediction ratio asymmetric / MSE:", round(bonus["mean_shift_ratio"], 4))
+# The bonus: a model that fears under-prediction three times as much, against the plain model.
+view.p1_bonus(p1)
 
 # %%
+# Where the asymmetric cost moves the predictions.
 show(plots.plot_bonus_shift(p1))
 
 # %%
-# The asymmetric loss and its gradient as implemented (src/gd_asym.py).
-from src.gd_asym import asym_grad, asym_loss
-
+# The asymmetric loss and its gradient as implemented.
 show_source(asym_loss, asym_grad)
 
 # %% [markdown]
@@ -209,15 +181,9 @@ show_source(asym_loss, asym_grad)
 # {{p1.bonus.val.mse_model.rmse:.1f}}; with the factor it is {{p1.val_rmse:.1f}}.)
 
 # %%
-from src import bonus_control
-
+# The control for the bonus: the same bike-scale loss without the asymmetry (k = 1).
 control = bonus_control.run(CFG)   # side study: reads artifacts/p1.json, writes artifacts/bonus_control.json
-rows = {"Phase 1 (z-scale MSE)": p1["bonus"]["val"]["mse_model"], "bike-scale, k = 1": control["val"]["k1_model"],
-        "bike-scale, k = 3": p1["bonus"]["val"]["asym_model"]}
-print(pd.DataFrame(rows).T[["sq_cost", "abs_cost", "under_share", "mean_error", "rmse", "mean_pred"]].round(3).to_string())
-print("shift from fitting on bikes:", round(control["shift_from_fitting_on_bikes"], 3),
-      "| shift from the asymmetry:", round(control["shift_from_asymmetry"], 3),
-      "| total:", round(control["total_shift"], 3))
+view.p1_bonus_control(p1, control)
 
 # %% [markdown]
 # ## Outcome — Phase 1

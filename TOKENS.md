@@ -28,3 +28,5 @@
 Subagents used about 2.9M tokens in 17 runs. The largest items were not code but reading-heavy Opus passes (final audit 274k, scribe 264k, analyst 195k) and the Phase 4 coder, which ran three times (180k + 27k + 114k) because the Phase 4 design changed twice after first results (ADR-014, ADR-016). Next time: settle the survivor/final-model logic in a cheap closed-form pilot before specifying Phase 4, give Phase 4 a fast mode so a re-run does not cost 20 minutes, and hand the scribe a digest instead of the source tree.
 
 Second pass (2026-10-08): the exploration itself (E1-E5) was done by the chief with closed-form scripts in `exp/v2/` at no subagent cost; the expensive items were again the full rebuild and the fresh-context audit. One avoidable cost: a 30-minute Phase 4 re-run triggered by file times after the auditor re-ran Phases 1-3 to identical bytes; `run.py` now compares content hashes.
+
+Notebook polish (2026-10-08/09, presentation only): coder S-9-01 107 tool uses, 369k tokens (60 view functions, one chart style, review fixes); independent code review 15 tool uses, 176k tokens (no critical issue, 12 fixes applied). No artifact changed.
