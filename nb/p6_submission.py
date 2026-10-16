@@ -1,13 +1,13 @@
 # %% [markdown]
 # ## Phase 6 — Final model and submission
 #
-# **Which model.** The regression model our pipeline recommends is the Phase 4 stage-B model: {{p6.model.method}} with λ = {{p6.model.lambda:.1e}} and l1_ratio {{p6.model.l1_ratio}} on the surviving features. Nothing is tuned here.
+# **Which model.** The regression model our pipeline recommends: the Phase 4 stage-B model, {{p6.model.method}} with λ = {{p6.model.lambda:.6f}} and l1_ratio {{p6.model.l1_ratio}}, on the surviving features. Nothing is tuned here.
 #
-# **Refit on training + validation, and why.** The hyper-parameters stay exactly as validated, but the weights are refitted on all {{p6.n_fit_rows}} labelled rows. The Phase 3 learning curve of the target was still rising at full size ({{p3.learning_curves.target.4.val_r2:.3f}} with 80% of the training days, {{p3.learning_curves.target.5.val_r2:.3f}} with all of them), so a quarter more rows should help a little, and the validation rows are days of the same months as the hidden ones. The scaler and the humidity fill stay as fitted on the training portion, so the hidden rows go through exactly the transformations used everywhere else. The cell first refits the validated model on the training rows alone and asserts that it reproduces the Phase 4 weights.
+# **Refit on all labelled rows.** The hyperparameters stay as validated, but the weights are refitted on all {{p6.n_fit_rows}} labelled rows. The target's learning curve in Phase 3 was still rising at full size ({{p3.learning_curves.target.4.val_r2:.3f}} → {{p3.learning_curves.target.5.val_r2:.3f}}), and the validation rows come from the same months as the hidden days. The scaler and the humidity fill stay as fitted on the training portion. The code first refits on the training rows alone and asserts that this reproduces the Phase 4 weights.
 #
-# **What we check without labels.** We cannot score the hidden days, and we do not tune anything on them. We only check that the predictions are sane: same rows and order as `test.csv`, no missing or negative values, the refitted model agrees closely with the validated one (correlation {{p6.a_vs_b_on_test.corr:.4f}}), and the predicted hourly profile by day type looks like the training profile (each cell between {{p6.profile_ratio.min:.2f}} and {{p6.profile_ratio.max:.2f}} times the training mean).
+# **What we check without labels.** The same rows and order as `test.csv`, no missing or negative values, close agreement between the refitted and the validated model (correlation {{p6.a_vs_b_on_test.corr:.4f}}), and a predicted hourly profile between {{p6.profile_ratio.min:.2f}} and {{p6.profile_ratio.max:.2f}} times the training mean in every cell (last plot).
 #
-# **What the model cannot adapt to.** It extrapolates growth as a straight line on the transformed scale, which Phase 3 showed to be somewhat too steep beyond the observed period; it has never seen a zero-demand hour, weather outside the observed range, or holidays other than those in the training days. For the hidden days, which lie inside the two observed years, the held-out-day estimate of Phase 4 ({{p4.recommended.day_block_r2:.3f}}) is our best guess of the score; for a genuinely later period we would expect something nearer the chronological estimate ({{p4.recommended.chrono_r2:.3f}}).
+# **What to expect.** The hidden test is {{diagnostics.test_coverage.n_test_days}} whole days, day 20 of each month, inside the two observed years, so the held-out-day estimate ({{p4.recommended.day_block_r2:.3f}}) is our best guess of the score. For a later period we would expect something nearer the chronological estimate ({{p4.recommended.chrono_r2:.3f}}): the model extends growth as a straight line on the transformed scale, which is too steep beyond the data, and it has never seen a zero-demand hour or new weather. The pipeline retrospective is the last table of Phase 5.
 
 # %%
 # Phase 6 refits the recommended Phase 4 model on training plus validation rows and predicts the hidden days.
@@ -45,8 +45,3 @@ print("chain assertions passed")
 # %%
 # The predicted hourly profile of the hidden days against the profile of the training days.
 show(plots_p5.plot_test_profile(train_all, test_df, sub))
-
-# %% [markdown]
-# ### The pipeline at a glance
-#
-# One line per phase, built from the five artifact files: what each phase consumed, what it handed on, and the score of the model it ended with. This is the same table as the retrospective in Phase 5, placed here so that the notebook ends with the whole chain in view.
