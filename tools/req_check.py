@@ -4,7 +4,10 @@ docs/TRACE.csv columns: req_id,statement,phase,code_ref,test_ref,artifact_ref,st
 status in: todo | implemented | verified | waived(<reason in verifier_note>)
 Usage: req_check.py [--trace docs/TRACE.csv] [--strict] [--phase p3]   (without --strict: only reports counts; fails on missing refs for implemented/verified rows)
 """
-import argparse, csv, collections, pathlib, sys
+import argparse
+import csv
+import collections
+import sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--trace", default="docs/TRACE.csv")

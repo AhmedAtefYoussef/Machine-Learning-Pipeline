@@ -12,7 +12,11 @@ Checks: hash chain, seed recompute from config ids, P2 init loss == P1 final los
         P2 starts from P1 weights, every original column has a verdict.
 Usage: chain_check.py [--dir artifacts] [--config config.yaml] [--require p1,p2,...]
 """
-import argparse, hashlib, json, pathlib, sys
+import argparse
+import hashlib
+import json
+import pathlib
+import sys
 
 ORIG_COLS = ["season", "yr", "mnth", "hr", "holiday", "weekday", "workingday", "weathersit", "temp", "atemp", "hum", "windspeed", "dteday", "instant"]
 REQ = {
