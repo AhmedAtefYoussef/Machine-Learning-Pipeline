@@ -188,7 +188,8 @@ def stability_data(seed=13):
 
 def test_stability_selection_properties():
     X, y, g = stability_data()
-    f = np.asarray(reg.stability_selection(X, y, 0.05, 1.0, g, seed=7, B=50))
+    f, sweeps = reg.stability_selection(X, y, 0.05, 1.0, g, seed=7, B=50)
+    assert sweeps.shape == (50,) and sweeps.min() >= 1
     assert f.shape == (6,)
     assert np.all((f >= 0) & (f <= 1))
     assert np.allclose(f * 50, np.round(f * 50), atol=1e-9)  # multiples of 1/B
@@ -201,11 +202,11 @@ def test_stability_selection_deterministic():
     X, y, g = stability_data()
     a = reg.stability_selection(X, y, 0.05, 1.0, g, seed=7, B=20)
     b = reg.stability_selection(X, y, 0.05, 1.0, g, seed=7, B=20)
-    assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
+    assert a[0].tobytes() == b[0].tobytes() and a[1].tobytes() == b[1].tobytes()
 
 
 def test_stability_selection_large_alpha_selects_nothing():
     X, y, g = stability_data()
     a_max = reg.alpha_max(X, y, 1.0)
-    f = np.asarray(reg.stability_selection(X, y, 5 * a_max, 1.0, g, seed=1, B=10))
+    f, _ = reg.stability_selection(X, y, 5 * a_max, 1.0, g, seed=1, B=10)
     assert np.all(f == 0)

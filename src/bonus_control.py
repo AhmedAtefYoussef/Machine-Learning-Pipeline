@@ -14,7 +14,7 @@ import numpy as np
 
 from src.common import Target, load_config, r2, read_artifact, rmse, set_threads, write_artifact
 from src.gd_asym import fit_asymmetric, operator_costs
-from src.phases.p1 import base_design, make_split
+from src.validation import base_design, make_split
 
 
 def describe(cnt: np.ndarray, pred: np.ndarray, k: float) -> dict:

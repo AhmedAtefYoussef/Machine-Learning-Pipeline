@@ -32,6 +32,15 @@ def logloss_grad(X, y, w, l2=0.0):
     return grad
 
 
+def logloss_and_grad(X, y, w, l2=0.0):
+    """(logloss, its gradient) from ONE linear predictor X w; same arithmetic as logloss and logloss_grad."""
+    eta = X @ w
+    data_term = np.mean(y * np.logaddexp(0.0, -eta) + (1.0 - y) * np.logaddexp(0.0, eta))
+    grad = X.T @ (sigmoid(eta) - y) / X.shape[0]
+    grad[1:] += l2 * w[1:]
+    return float(data_term + 0.5 * l2 * np.sum(w[1:] ** 2)), grad
+
+
 def fit_logistic(X, y, l2=0.0, lr=None, tol_loss=1e-10, tol_grad=1e-6, max_iter=50000):
     """Gradient descent from w = 0.  Default lr = 1/(lambda_max(X'X/n)/4 + l2).
 
@@ -39,14 +48,12 @@ def fit_logistic(X, y, l2=0.0, lr=None, tol_loss=1e-10, tol_grad=1e-6, max_iter=
     """
     if lr is None:
         lr = 1.0 / (lambda_max(X) / 4.0 + l2)
-    def loss_fn(w):
-        return logloss(X, y, w, l2)
 
-    def grad_fn(w):
-        return logloss_grad(X, y, w, l2)
+    def loss_and_grad(w):
+        return logloss_and_grad(X, y, w, l2)
 
-    return gradient_descent(loss_fn, grad_fn, np.zeros(X.shape[1]), lr,
-                            tol_loss=tol_loss, tol_grad=tol_grad, max_iter=max_iter)
+    return gradient_descent(None, None, np.zeros(X.shape[1]), lr, tol_loss=tol_loss, tol_grad=tol_grad,
+                            max_iter=max_iter, loss_and_grad=loss_and_grad)
 
 
 # ----------------------------------------------------------------- metrics
