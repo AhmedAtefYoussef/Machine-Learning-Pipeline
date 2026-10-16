@@ -53,8 +53,12 @@ def test_gradient_check(k):
         assert np.abs(X @ w).max() <= 3.0
         resid = np.expm1(X @ w) - y
         assert np.all(resid != 0)
-        loss = lambda v: ga.asym_loss(X, y, v, LOG, k)
-        grad = lambda v: ga.asym_grad(X, y, v, LOG, k)
+        def loss(v):
+            return ga.asym_loss(X, y, v, LOG, k)
+
+        def grad(v):
+            return ga.asym_grad(X, y, v, LOG, k)
+
         assert gd.gradient_check(loss, grad, w, n_coords=5, eps=1e-6, seed=0) < 1e-6
 
 

@@ -10,6 +10,10 @@ recovered as b = mean(y) - mean(X) . w, so any X is accepted.
 """
 import numpy as np
 
+SOLVER_TOL = 1.0e-7    # Phases 4 and 6: coordinate descent stops when no coefficient moves more than this (S-4-01)
+MAX_SWEEPS = 20000     # sweep budget of one solution at that tolerance
+NONZERO_TOL = 1.0e-10  # |w| above this counts as non-zero (path entry, stability selection)
+
 
 def centred_gram(X, y):
     """Return (G, c, x_mean, y_mean) with G = Xc'Xc/n (p, p) and c = Xc'yc/n (p,)."""
@@ -125,23 +129,29 @@ def enet_path(X, y, alphas_desc, l1_ratio, tol=1e-9, max_sweeps=5000):
     return np.array(B), np.array(W), np.array(S)
 
 
-def group_bootstrap_rows(groups, rng):
-    """Row indices of a bootstrap over unique groups (same count, with replacement)."""
+def group_rows(groups):
+    """(sorted unique groups, {group: row indices}); build once and reuse for every bootstrap draw."""
     unique = np.unique(groups)
+    return unique, {g: np.flatnonzero(groups == g) for g in unique}
+
+
+def group_bootstrap_rows(unique, rows_of, rng):
+    """Row indices of a bootstrap over the groups from `group_rows` (same count, with replacement)."""
     drawn = rng.choice(unique, size=len(unique), replace=True)
-    rows_of = {g: np.flatnonzero(groups == g) for g in unique}
     return np.concatenate([rows_of[g] for g in drawn])
 
 
-def stability_selection(X, y, alpha, l1_ratio, groups, seed, B=50):
-    """Share of B group-bootstrap fits in which |w_j| > 1e-10.  Returns freq (p,).
+def stability_selection(X, y, alpha, l1_ratio, groups, seed, B=50, tol=1e-9, max_sweeps=5000):
+    """Share of B group-bootstrap fits in which |w_j| > NONZERO_TOL.  Returns (freq (p,), sweeps (B,)).
 
-    Resample b uses default_rng(seed + b); X is not re-standardised.
+    Resample b uses default_rng(seed + b); X is not re-standardised. The sweeps of every fit are returned so the
+    caller can count solutions that used up their budget.
     """
-    groups = np.asarray(groups)
+    unique, rows_of = group_rows(np.asarray(groups))
     selected = np.zeros(X.shape[1])
+    sweeps = np.zeros(B, dtype=int)
     for b in range(B):
-        rows = group_bootstrap_rows(groups, np.random.default_rng(seed + b))
-        _, w, _ = enet_cd(X[rows], y[rows], alpha, l1_ratio)
-        selected += np.abs(w) > 1e-10
-    return selected / B
+        rows = group_bootstrap_rows(unique, rows_of, np.random.default_rng(seed + b))
+        _, w, sweeps[b] = enet_cd(X[rows], y[rows], alpha, l1_ratio, None, tol, max_sweeps)
+        selected += np.abs(w) > NONZERO_TOL
+    return selected / B, sweeps

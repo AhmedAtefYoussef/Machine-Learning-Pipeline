@@ -9,12 +9,6 @@ from src.common import Target
 from src.gd import GDResult
 
 
-def _eta(X, w, y, target: Target, cap=None):
-    """eta = X w, held at or below the cap (default target.eta_cap(y)) so that q(eta) stays finite."""
-    cap = target.eta_cap(y) if cap is None else cap
-    return np.minimum(X @ w, cap)
-
-
 def _cost_weights(r, k):
     """c_i = k where r_i < 0 else 1."""
     return np.where(r < 0, k, 1.0)
@@ -22,7 +16,7 @@ def _cost_weights(r, k):
 
 def asym_loss(X, y, w, target: Target, k=3.0, cap=None):
     """L(w) = (1/n) sum_i c_i r_i^2 with r = q(Xw) - 1 - y."""
-    r = target.q(_eta(X, w, y, target, cap)) - 1.0 - y
+    r = target.q(target.capped(X @ w, y, cap)) - 1.0 - y
     return float(np.mean(_cost_weights(r, k) * r ** 2))
 
 
@@ -32,7 +26,7 @@ def asym_grad(X, y, w, target: Target, k=3.0, cap=None):
     The chain rule through q gives the dq/deta factor (exp(Xw) for the log). The weight switch has no
     derivative term because r = 0 exactly where c changes.
     """
-    eta = _eta(X, w, y, target, cap)
+    eta = target.capped(X @ w, y, cap)
     r = target.q(eta) - 1.0 - y
     return 2.0 / len(y) * (X.T @ (_cost_weights(r, k) * r * target.dq_deta(eta)))
 

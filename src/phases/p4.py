@@ -11,8 +11,6 @@ Conventions
 """
 from __future__ import annotations
 
-import time
-from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -20,15 +18,13 @@ import pandas as pd
 
 from src import verdicts as vd
 from src.common import (Target, bootstrap_r2, chrono_split, config_seed, day_block_folds, load_config, load_train,
-                        paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split, set_threads, write_artifact)
+                        paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split, set_threads, timed,
+                        write_artifact)
 from src.features import Design, DesignSpec, sources
-from src.phases.p3 import ladder_specs
-from src.regularization import (alpha_grid, alpha_max, enet_cd, enet_path, group_bootstrap_rows,
-                                ridge_closed_form, ridge_path)
+from src.regularization import (MAX_SWEEPS, NONZERO_TOL, SOLVER_TOL, alpha_grid, alpha_max, enet_path,
+                                ridge_closed_form, ridge_path, stability_selection)
+from src.validation import ladder_specs
 
-SOLVER_TOL = 1.0e-7        # coordinate descent stops when no coefficient moves more than this (fixed by S-4-01)
-MAX_SWEEPS = 20000
-NONZERO_TOL = 1.0e-10      # |w| above this counts as non-zero (same rule as stability selection)
 UNREGULARISED_ALPHA = 1.0e-8
 PATH_NAMES = ("temp", "atemp", "hum", "windspeed", "workingday", "holiday", "trend", "yr", "instant", "ws_3")
 METHODS = ("l2", "l1", "enet")
@@ -110,15 +106,6 @@ class Context:
 TIMINGS: dict[str, float] = {}
 
 
-@contextmanager
-def timed(step: str):
-    """Record and print the wall-clock time of one step."""
-    start = time.perf_counter()
-    yield
-    TIMINGS[step] = time.perf_counter() - start
-    print(f"[p4] {step}: {TIMINGS[step]:.1f} s")
-
-
 # ----------------------------------------------------------------------------- designs
 
 def add_candidates(spec: DesignSpec, candidate_blocks: list[str], train_df: pd.DataFrame):
@@ -174,17 +161,9 @@ def fold_splits(ctx: Context, spec: DesignSpec | None = None) -> list[Split]:
 
 # ----------------------------------------------------------------------------- scoring
 
-def predict_bikes(split: Split, b: float, w: np.ndarray, target: Target) -> tuple[np.ndarray, np.ndarray]:
-    """Bike-scale predictions (fitting rows, evaluation rows); eta on evaluation rows capped like validation.fit_predict."""
-    eta_fit = b + split.X_fit @ w
-    s = target.factor(eta_fit, split.cnt_fit)
-    eta_eval = np.minimum(b + split.X_eval @ w, target.eta_cap(split.cnt_fit))
-    return target.to_bikes(eta_fit, s), target.to_bikes(eta_eval, s)
-
-
 def score(split: Split, b: float, w: np.ndarray, target: Target) -> tuple[dict, np.ndarray]:
     """(train/eval R2 and RMSE, evaluation predictions) of the model (b, w)."""
-    pred_fit, pred_eval = predict_bikes(split, b, w, target)
+    _, pred_fit, pred_eval = target.predict(b + split.X_fit @ w, split.cnt_fit, b + split.X_eval @ w)
     scores = {"train_r2": r2(split.cnt_fit, pred_fit), "train_rmse": rmse(split.cnt_fit, pred_fit),
               "r2": r2(split.cnt_eval, pred_eval), "rmse": rmse(split.cnt_eval, pred_eval)}
     return scores, pred_eval
@@ -380,16 +359,12 @@ def coefficient_paths(curves: dict, names: list[str]) -> tuple[dict, dict]:
 
 
 def stability_frequency(split: Split, fit: Fit, groups: np.ndarray, ctx: Context, where: str) -> np.ndarray:
-    """Share of B date-bootstraps in which each coefficient is non-zero (like regularization.stability_selection,
-    but with our sweep budget so that non-convergence is counted)."""
-    B = ctx.p4cfg["stability"]["B"]
-    selected = np.zeros(split.X_fit.shape[1])
-    for b in range(B):
-        rows = group_bootstrap_rows(groups, np.random.default_rng(ctx.seed + b))
-        _, w, sweeps = enet_cd(split.X_fit[rows], split.z_fit[rows], fit.alpha, fit.rho, None, SOLVER_TOL, MAX_SWEEPS)
-        ctx.log.record(where, sweeps)
-        selected += np.abs(w) > NONZERO_TOL
-    return selected / B
+    """Share of B date-bootstraps in which each coefficient is non-zero, with our sweep budget so that
+    non-convergence is counted."""
+    freq, sweeps = stability_selection(split.X_fit, split.z_fit, fit.alpha, fit.rho, groups, ctx.seed,
+                                       ctx.p4cfg["stability"]["B"], SOLVER_TOL, MAX_SWEEPS)
+    ctx.log.record(where, sweeps)
+    return freq
 
 
 def stability(fits: dict[str, Fit], ctx: Context) -> dict:
@@ -576,12 +551,12 @@ def final_stage(ctx_a: Context, kept: list[str], full_best_pred: np.ndarray) -> 
     """Re-run the whole search on the surviving columns; returns (final, recommended, recommended predictions)."""
     ctx = replace(ctx_a, split=ctx_a.split.keep([ctx_a.split.names.index(n) for n in kept]), log=SolverLog(),
                   columns=list(kept))
-    with timed("stage B curves"):
+    with timed("stage B curves", TIMINGS, "p4"):
         curves = validation_curves(ctx)
         fits = choose_fits(curves)
-    with timed("stage B cross-validation"):
+    with timed("stage B cross-validation", TIMINGS, "p4"):
         cv = cross_validation(curves, fits, ctx)
-    with timed("stage B methods"):
+    with timed("stage B methods", TIMINGS, "p4"):
         methods, preds = describe_methods(curves, fits, cv, ctx)
         unreg, pred_unreg = unregularised_final(ctx)
         compare = comparisons(preds, pred_unreg, ctx)
@@ -613,34 +588,34 @@ def grid_summary(curves: dict) -> dict:
             "enet": {str(rho): span(c) for rho, c in curves["enet"].items()}}
 
 
-def run(cfg: dict | None = None) -> dict:
-    """Execute Phase 4 and write artifacts/p4.json."""
+def run(cfg: dict | None = None, write: bool = True) -> dict:
+    """Execute Phase 4; write artifacts/p4.json when write=True. Returns the payload."""
     cfg = cfg if cfg is not None else load_config()
     set_threads(cfg.get("threads", 1))
     TIMINGS.clear()
     p1, p2, p3 = read_artifact("p1"), read_artifact("p2"), read_artifact("p3")
-    with timed("design and baseline"):
+    with timed("design and baseline", TIMINGS, "p4"):
         ctx = build_context(cfg, p1, p2, p3)
         unreg, pred_unreg = unregularised_model(ctx)
-    with timed("validation curves"):
+    with timed("validation curves", TIMINGS, "p4"):
         curves = validation_curves(ctx)
         fits = choose_fits(curves)
-    with timed("day-block cross-validation"):
+    with timed("day-block cross-validation", TIMINGS, "p4"):
         cv = cross_validation(curves, fits, ctx)
-    with timed("methods, comparisons, recommendation"):
+    with timed("methods, comparisons, recommendation", TIMINGS, "p4"):
         methods, preds = describe_methods(curves, fits, cv, ctx)
         compare = comparisons(preds, pred_unreg, ctx)
-    with timed("paths and stability"):
+    with timed("paths and stability", TIMINGS, "p4"):
         paths, entry_alpha = coefficient_paths(curves, ctx.split.names)
         stab = stability(fits, ctx)
-    with timed("column verdicts"):
+    with timed("column verdicts", TIMINGS, "p4"):
         verdict = column_verdicts(fits, entry_alpha, stab, ctx)
-    with timed("survivors"):
+    with timed("survivors", TIMINGS, "p4"):
         surv = survivors(verdict, ctx)
     best_full = max(METHODS, key=lambda m: methods[m]["val_r2"])
     stage_a_not_converged = {"count": ctx.log.not_converged, "where": dict(ctx.log.where)}
     final, recommended, rec_pred = final_stage(ctx, surv["survivors_expanded"], preds[best_full])
-    with timed("rich check"):
+    with timed("rich check", TIMINGS, "p4"):
         rich = rich_check(p2, fits, rec_pred, ctx)
 
     payload = {
@@ -657,7 +632,8 @@ def run(cfg: dict | None = None) -> dict:
         "rich_check": rich, "column_verdicts": verdict, **surv,
         "not_converged": stage_a_not_converged, "not_converged_final": final["not_converged"],
         "solver": {"tol": SOLVER_TOL, "max_sweeps": MAX_SWEEPS}, "grids": grid_summary(curves)}
-    write_artifact("p4", payload, upstream="p3", cfg=cfg)
+    if write:
+        write_artifact("p4", payload, upstream="p3", cfg=cfg)
     print(f"[p4] total {sum(TIMINGS.values()):.1f} s | not converged: stage A {stage_a_not_converged['count']}, "
           f"stage B {final['not_converged']['count']}, rich check {ctx.log.not_converged - stage_a_not_converged['count']} | "
           f"most sweeps used: {ctx.log.slowest_sweeps}")

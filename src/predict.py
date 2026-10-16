@@ -20,8 +20,7 @@ import pandas as pd
 from src.common import (Target, config_seed, load_config, load_test, load_train, read_artifact, seeded_split,
                         set_threads, write_artifact)
 from src.features import Design, DesignSpec
-from src.phases.p4 import MAX_SWEEPS, SOLVER_TOL
-from src.regularization import alpha_grid, alpha_max, enet_path, ridge_closed_form
+from src.regularization import MAX_SWEEPS, SOLVER_TOL, alpha_grid, alpha_max, enet_path, ridge_closed_form
 
 SUBMISSION_PATH = "sample_submission.csv"
 REPRODUCTION_TOL = 1.0e-6     # model A must match the Phase 4 weights this closely
@@ -48,9 +47,7 @@ def fit_penalised(X: np.ndarray, z: np.ndarray, rec: dict, p4cfg: dict) -> tuple
 
 def unclipped_bikes(b: float, w: np.ndarray, X_fit, cnt_fit, X_new, target: Target) -> np.ndarray:
     """s * q(eta) - 1 for the rows X_new (may be below 0); s comes from the fitting rows."""
-    s = target.factor(b + X_fit @ w, cnt_fit)
-    eta_new = np.minimum(b + X_new @ w, target.eta_cap(cnt_fit))   # same cap as validation.fit_predict
-    return target.bikes_unclipped(eta_new, s)
+    return target.predict(b + X_fit @ w, cnt_fit, b + X_new @ w, clip=False)[2]
 
 
 # ----------------------------------------------------------------------------- sanity summaries

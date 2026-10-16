@@ -30,6 +30,12 @@ def mse_grad(X, y, w):
     return X.T @ residual / len(y)
 
 
+def mse_loss_and_grad(X, y, w):
+    """(L(w), grad L(w)) from ONE residual X w - y; same arithmetic as mse_loss and mse_grad."""
+    residual = X @ w - y
+    return float(residual @ residual / (2.0 * len(y))), X.T @ residual / len(y)
+
+
 def lambda_max(X):
     """Largest eigenvalue of X^T X / n (symmetric, so eigvalsh). Stable lr < 2 / lambda_max."""
     gram = X.T @ X / X.shape[0]
@@ -43,26 +49,29 @@ def _has_converged(loss_prev, loss_new, grad_norm, tol_loss, tol_grad):
 
 
 def gradient_descent(loss_fn, grad_fn, w0, lr, tol_loss=1e-10, tol_grad=1e-6,
-                     max_iter=50000, record_every=1):
+                     max_iter=50000, record_every=1, loss_and_grad=None):
     """Plain gradient descent: w <- w - lr * grad_fn(w).
 
-    loss_fn(w) -> float and grad_fn(w) -> (p,) are closures over the data.
+    loss_fn(w) -> float and grad_fn(w) -> (p,) are closures over the data. When the two share work (the
+    residual), pass loss_and_grad(w) -> (float, (p,)) instead; loss_fn and grad_fn are then unused.
     Stops "converged" when |L_new - L_prev| <= tol_loss * max(L_prev, 1e-300) and
     ||grad||_2 < tol_grad; "diverged" when the loss is non-finite or exceeds
     1e6 * L(w0); otherwise "max_iter". loss_history[0] is L(w0).
     """
+    if loss_and_grad is None:
+        def loss_and_grad(w):
+            return loss_fn(w), grad_fn(w)
+
     w = np.array(w0, dtype=np.float64)
-    loss = loss_fn(w)
+    loss, grad = loss_and_grad(w)
     loss_initial = loss
-    grad = grad_fn(w)
     history = [loss]
     stop_reason = "max_iter"
     iterations = 0
 
     for iterations in range(1, max_iter + 1):
         w = w - lr * grad
-        loss_new = loss_fn(w)
-        grad = grad_fn(w)
+        loss_new, grad = loss_and_grad(w)
         grad_norm = float(np.linalg.norm(grad))
         if iterations % record_every == 0:
             history.append(loss_new)
@@ -77,6 +86,15 @@ def gradient_descent(loss_fn, grad_fn, w0, lr, tol_loss=1e-10, tol_grad=1e-6,
     return GDResult(weights=w, iterations=iterations, stop_reason=stop_reason,
                     loss_history=[float(v) for v in history],
                     grad_norm_final=float(np.linalg.norm(grad)), loss_final=float(loss))
+
+
+def run_gd(X, z, w0, lr, tol_loss, tol_grad, max_iter):
+    """Gradient descent on the MSE loss 1/(2n)||Xw - z||^2 from w0, recording the loss at every iteration."""
+    def loss_and_grad(w):
+        return mse_loss_and_grad(X, z, w)
+
+    return gradient_descent(None, None, w0, lr, tol_loss=tol_loss, tol_grad=tol_grad, max_iter=max_iter,
+                            record_every=1, loss_and_grad=loss_and_grad)
 
 
 def gradient_check(loss_fn, grad_fn, w, n_coords=20, eps=1e-6, seed=0):

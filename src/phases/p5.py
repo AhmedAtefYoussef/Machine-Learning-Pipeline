@@ -12,13 +12,11 @@ scikit-learn is not imported here; everything comes from our own modules.
 from __future__ import annotations
 
 import re
-import time
-from contextlib import contextmanager
 
 import numpy as np
 import pandas as pd
 
-from src.common import config_seed, load_config, load_train, read_artifact, seeded_split, set_threads, write_artifact
+from src.common import config_seed, load_config, load_train, read_artifact, seeded_split, set_threads, timed, write_artifact
 from src.features import BASE, Design, DesignSpec, sources
 from src.gd import gradient_check, lambda_max
 from src.labels import apply_thresholds, fit_thresholds
@@ -35,15 +33,6 @@ BOOTSTRAP_RNG_OFFSET = 5      # rng = default_rng(seed + 5): the Phase 5 validat
 HOUR_COLUMN = re.compile(r"^hr_\d+$")
 FOIL_RULES = ([], ["workingday", "hr"])   # global threshold, and the (day type, hour) rule without the year
 TIMINGS: dict[str, float] = {}
-
-
-@contextmanager
-def timed(step: str):
-    """Record and print the wall-clock time of one step."""
-    start = time.perf_counter()
-    yield
-    TIMINGS[step] = time.perf_counter() - start
-    print(f"[p5] {step}: {TIMINGS[step]:.1f} s")
 
 
 # ----------------------------------------------------------------------------- step 1: the surviving columns
@@ -274,8 +263,8 @@ def retrospective(p1: dict, p2: dict, p3: dict, p4: dict, p5_row: dict) -> list[
 
 # ----------------------------------------------------------------------------- run
 
-def run(cfg: dict | None = None) -> dict:
-    """Execute Phase 5 and write artifacts/p5.json."""
+def run(cfg: dict | None = None, write: bool = True) -> dict:
+    """Execute Phase 5; write artifacts/p5.json when write=True. Returns the payload."""
     cfg = cfg if cfg is not None else load_config()
     set_threads(cfg.get("threads", 1))
     TIMINGS.clear()
@@ -284,13 +273,13 @@ def run(cfg: dict | None = None) -> dict:
     train_df, val_df = seeded_split(load_train(cfg), seed, cfg["split"]["test_size"])
     cost_ratio = p5cfg["cost_ratio_miss_to_false_alarm"]
 
-    with timed("design and labels"):
+    with timed("design and labels", TIMINGS, "p5"):
         design, names = survivor_design(p4, train_df)
         X_tr, X_va = (design_matrix(design, names, d) for d in (train_df, val_df))
         table, y_tr, y_va = label_rule(train_df, val_df, p5cfg["group_by"], p5cfg["quantile"])
         balance = class_balance(y_tr, y_va, val_df)
 
-    with timed("l2 sweep"):
+    with timed("l2 sweep", TIMINGS, "p5"):
         fits = [fit_candidate(X_tr, y_tr, X_va, y_va, l2, p5cfg["max_iter"]) for l2 in p5cfg["l2_candidates"]]
         rows = [row for _, row in fits]
         chosen = choose_l2(rows)
@@ -301,7 +290,7 @@ def run(cfg: dict | None = None) -> dict:
         grad_checks = {name: check_gradient(X_tr, y_tr, v, l2)
                        for name, v in (("at_zeros", np.zeros(len(w))), ("at_half", 0.5 * w))}
 
-    with timed("threshold and metrics"):
+    with timed("threshold and metrics", TIMINGS, "p5"):
         p_va, p_tr = sigmoid(X_va @ w), sigmoid(X_tr @ w)
         t_cost = 1.0 / (1.0 + cost_ratio)
         curve = threshold_curve(y_va, p_va, cost_ratio)
@@ -313,7 +302,7 @@ def run(cfg: dict | None = None) -> dict:
         boot = bootstrap_auc(y_va, p_va, seed, cfg["bootstrap"]["B"])
 
     weight_names = ["bias"] + names
-    with timed("foils"):
+    with timed("foils", TIMINGS, "p5"):
         mats, unconverged = foil_matrices(design, names, train_df, val_df), []
         rules = [list(r) for r in FOIL_RULES] + [list(p5cfg["group_by"])]
         variants = [label_variant(r, p5cfg, train_df, val_df, mats, (X_tr, X_va), l2, unconverged,
@@ -340,7 +329,8 @@ def run(cfg: dict | None = None) -> dict:
         "retrospective": retrospective(p1, p2, p3, p4, p5_row),
         "n_train": len(train_df), "n_val": len(val_df),
     }
-    write_artifact("p5", payload, upstream="p4", cfg=cfg)
+    if write:
+        write_artifact("p5", payload, upstream="p4", cfg=cfg)
     return payload
 
 
