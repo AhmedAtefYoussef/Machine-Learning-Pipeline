@@ -13,12 +13,32 @@
   "held_out_days_delta": 0.0027369886353997286,
   "seeded_delta": 0.002894706451104012
  },
+ "share_val_rows_sharing_a_day_with_train": 1.0,
+ "test_coverage": {
+  "n_test_days": 24,
+  "n_test_days_with_previous_day_in_train": 24,
+  "share_test_days_with_previous_day_in_train": 1.0,
+  "test_days_of_month": [
+   20
+  ]
+ },
  "tree_classifier_roc_auc": 0.9014230576919836,
  "tree_model": {
   "chrono": 0.9024450439731119,
   "held_out_days": 0.9503450740119253,
   "seeded": 0.9659971659008686,
   "seeded_minus_days": 0.015652091888943342
+ },
+ "val_r2_interval_row_vs_day_block": {
+  "day_block_bootstrap_interval": [
+   0.9318,
+   0.9499
+  ],
+  "day_block_to_row_width_ratio": 1.1486,
+  "row_bootstrap_interval": [
+   0.9332,
+   0.9489
+  ]
  },
  "weather_blocks_max_abs_days_delta": 0.0007388790360658426,
  "year_month_levels": {

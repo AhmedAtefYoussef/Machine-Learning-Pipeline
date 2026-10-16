@@ -7,7 +7,7 @@ Everything is fitted on the fit rows only. Scores are R2 on bikes on three valid
 import numpy as np
 import pandas as pd
 
-from src.common import chrono_split, config_seed, day_block_folds, load_config, load_train, r2, seeded_split, set_threads
+from src.common import Target, chrono_split, config_seed, day_block_folds, load_config, load_train, r2, seeded_split, set_threads
 from src.features import Design, DesignSpec
 
 cfg = load_config()
@@ -36,29 +36,20 @@ def base_matrices(spec: DesignSpec):
     return _BASE_CACHE[key]
 
 
-def forward(cnt, lam):
-    """Power-family target on cnt + 1: log for lam = 0, ((cnt+1)^lam - 1)/lam otherwise."""
-    return np.log1p(cnt) if lam == 0 else ((cnt + 1.0) ** lam - 1.0) / lam
-
-
-def inverse(eta, lam):
-    """q = cnt + 1 on the bike scale (before the least-squares factor)."""
-    return np.exp(eta) if lam == 0 else np.maximum(lam * eta + 1.0, 1e-9) ** (1.0 / lam)
-
-
 def fit_predict(X, Xe, cnt, lam, alpha=ALPHA, weights=None):
     """Ridge on the transformed target; returns bike-scale predictions for the eval rows and the fit rows."""
-    z = forward(cnt, lam)
+    target = Target(power=lam, back_method="ls")        # the chain's own target maths (common.Target)
+    z = target.forward(cnt)
     R = alpha * np.eye(X.shape[1]); R[0, 0] = 0.0
     if weights is None:
         w = np.linalg.solve(X.T @ X / len(z) + R, X.T @ z / len(z))
     else:
         Xw = X * weights[:, None]
         w = np.linalg.solve(Xw.T @ X / weights.sum() + R, Xw.T @ z / weights.sum())
-    q = inverse(X @ w, lam)
-    s = float(((cnt + 1.0) * q).sum() / (q * q).sum())
-    cap = (cnt.max() + 1.0) * np.e                       # same idea as the eta cap of validation.fit_predict
-    return np.clip(s * np.minimum(inverse(Xe @ w, lam), cap) - 1.0, 0, None), np.clip(s * q - 1.0, 0, None)
+    eta = X @ w
+    s = target.factor(eta, cnt)
+    eta_e = np.minimum(Xe @ w, target.eta_cap(cnt))
+    return target.to_bikes(eta_e, s), target.to_bikes(eta, s)
 
 
 def standardise(extra: pd.DataFrame, fit_index, eval_index):
