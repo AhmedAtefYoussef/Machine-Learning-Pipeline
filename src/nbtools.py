@@ -1,93 +1,80 @@
-"""Notebook helpers that are neither tables nor plots: print our code, run a phase or load its artifact."""
+"""Notebook helpers: show a table, print our code, run a phase or load its stored artifact. They compute no result."""
 from __future__ import annotations
 
+import ast
 import inspect
-import json
-import os
+import textwrap
 
 import numpy as np
+import pandas as pd
+from IPython.display import display
 
-import src.phases.p1 as p1mod
-from src.common import cached_or_run, load_config
+from src.common import cached_or_run, load_config, read_artifact
+
+CHOICE_FILL = "background-color: #e6f0fb; font-weight: 600"   # the row that records a choice we made
+TABLE_STYLES = [
+    {"selector": "", "props": "border-collapse: collapse; font-size: 13px; background: #ffffff; color: #0b0b0b;"},
+    {"selector": "caption", "props": "caption-side: top; text-align: left; font-weight: 600; padding: 2px 0 6px 0;"},
+    {"selector": "th", "props": "background: #f1f0ed; border-bottom: 1px solid #d9d8d4; text-align: left; padding: 5px 10px;"},
+    {"selector": "td", "props": "padding: 4px 10px; text-align: left;"},
+]
+
+
+def _text(value):
+    """One table entry as text: five significant digits for floats, a dash for missing values, lists joined."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "–"
+    if isinstance(value, (float, np.floating)):
+        return f"{value:.5g}"
+    return ", ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value)
+
+
+def table(data, caption=None, highlight=None):
+    """Display a DataFrame (or a dict as item | value rows); `highlight` marks the rows we chose (a boolean mask)."""
+    frame = pd.DataFrame({"item": list(data), "value": list(data.values())}) if isinstance(data, dict) else data
+    styler = frame.reset_index(drop=True).style.hide(axis="index").format(_text).set_table_styles(TABLE_STYLES)
+    if caption:
+        styler = styler.set_caption(caption)
+    if highlight is not None:
+        chosen = np.asarray(highlight, dtype=bool)
+        fill = lambda f: pd.DataFrame(np.where(chosen[:, None] & np.ones(f.shape, bool), CHOICE_FILL, ""),  # noqa: E731
+                                      index=f.index, columns=f.columns)
+        styler = styler.apply(fill, axis=None)
+    display(styler)
 
 
 def show_source(*functions):
-    """Print the source code of our own functions, so the algorithm is visible where the notebook uses it."""
+    """Print the code of our own functions (docstrings and blank lines left out, to keep the output short)."""
     for function in functions:
-        print(inspect.getsource(function))
+        tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+        body = tree.body[0].body
+        first = body[0]
+        is_doc = isinstance(first, ast.Expr) and isinstance(getattr(first, "value", None), ast.Constant) \
+            and isinstance(first.value.value, str)
+        lines = inspect.getsource(function).splitlines()
+        if is_doc:
+            lines = lines[:first.lineno - 1] + lines[first.end_lineno:]
+        print("\n".join(line for line in lines if line.strip()))
 
 
-def largest_difference(a, b):
-    """Largest relative difference between the numbers of two artifacts, and how many other entries differ."""
-    if isinstance(a, dict) and isinstance(b, dict):
-        if a.keys() != b.keys():
-            return 0.0, 1
-        parts = [largest_difference(a[k], b[k]) for k in a]
-    elif isinstance(a, list) and isinstance(b, list):
-        if len(a) != len(b):
-            return 0.0, 1
-        parts = [largest_difference(x, y) for x, y in zip(a, b)]
-    elif isinstance(a, float) and isinstance(b, float):
-        return abs(a - b) / max(abs(a), abs(b), 1e-12), 0
-    else:
-        return 0.0, int(a != b)
-    return max((p[0] for p in parts), default=0.0), sum(p[1] for p in parts)
+def max_abs_diff(a, b):
+    """Largest absolute difference between the floats of two artifacts, compared key by key and item by item."""
+    if isinstance(a, dict):
+        return max([max_abs_diff(a[k], b[k]) for k in a if k in b], default=0.0)
+    if isinstance(a, (list, tuple)):
+        return max([max_abs_diff(x, y) for x, y in zip(a, b)], default=0.0)
+    both_floats = isinstance(a, (float, np.floating)) and isinstance(b, (float, np.floating))
+    return abs(a - b) if both_floats and not (np.isnan(a) and np.isnan(b)) else 0.0
 
 
-def _read_json(path):
-    """The artifact at `path`, or None if it cannot be read (for example after an interrupted run)."""
-    try:
-        with open(path, "rb") as handle:
-            return json.loads(handle.read())
-    except (OSError, ValueError):
-        return None
-
-
-def _same_inputs(a, b):
-    """True when two artifacts were built from the same configuration and the same upstream artifact."""
-    return b is not None and a.get("config_sha256") == b.get("config_sha256") and a.get("upstream_sha256") == b.get("upstream_sha256")
-
-
-def phase(name, run_fn, cfg, upstream=None, live=False, recompute_all=False):
-    """Run a phase, or load its stored artifact.
-
-    live=False (the slow Phases 4 and 5): load the stored artifact if it was built from this configuration and
-    this upstream artifact, otherwise run the phase.
-    live=True (Phases 1 to 3, seconds each): always run the phase here and now, then compare the result with the
-    stored artifact. If the stored artifact belongs to this configuration it is put back afterwards, so that the
-    later phases, which are tied to it by its hash, stay valid; another machine can differ in the last digits.
-    """
-    path = os.path.join("artifacts", name + ".json")
-    if recompute_all or not live or not os.path.exists(path) or cfg != load_config():
-        return run_fn(cfg) if recompute_all else cached_or_run(name, run_fn, cfg, upstream=upstream)
-    with open(path, "rb") as handle:
-        stored_bytes = handle.read()
-    stored = json.loads(stored_bytes)
-    try:
-        run_fn(cfg)                                       # the live run; it rewrites artifacts/<name>.json
-    finally:                                              # also when the run is interrupted or raises
-        fresh = _read_json(path)                          # what the live run wrote (None if it was cut off)
-        if fresh is None or _same_inputs(stored, fresh):
-            with open(path, "wb") as handle:
-                handle.write(stored_bytes)
-    if not _same_inputs(stored, fresh):
-        print(f"{name}: computed live; the stored artifact belonged to another configuration and was replaced")
-        return fresh
-    worst, other = largest_difference(stored, fresh)
-    print(f"{name}: computed live just now; largest relative difference to the stored artifact {worst:.1e}, "
-          f"{other} other entries differ; stored file kept so that the later phases stay valid")
-    if worst > 1e-6 or other:
-        print(f"WARNING: the live result of {name} differs from the stored artifact; the stored one is kept. "
-              "Set RECOMPUTE_ALL = True in the configuration cell to rebuild the chain from live results.")
-    return stored
-
-
-def p1_live_run(cfg):
-    """Our gradient descent from zero weights with the Phase 1 settings, run again here: (result, learning rate)."""
-    split = p1mod.make_split(cfg)
-    _, design, _ = p1mod.base_design(split)
-    _, _, lr = p1mod.learning_rate(design, cfg["p1"]["lr_fraction_of_bound"])
-    knobs = cfg["p1"]
-    live = p1mod.run_gd(design, split.z_tr, np.zeros(design.shape[1]), lr, knobs["tol_loss"], knobs["tol_grad"],
-                        knobs["max_iter"])
-    return live, lr
+def phase(name, run_fn, cfg, recompute=False, upstream=None, live=False):
+    """The artifact of a phase: computed live and checked (Phases 1-3), loaded if still valid, or recomputed."""
+    if recompute:
+        return run_fn(cfg)
+    if live and cfg == load_config():
+        fresh, stored = run_fn(cfg, write=False), read_artifact(name)
+        gap = max_abs_diff(fresh, stored)
+        assert gap < 1e-6, f"{name}: the live run differs from the stored artifact by {gap:.1e}"
+        print(f"{name}: computed live just now; largest difference to the stored artifact {gap:.1e}")
+        return stored
+    return cached_or_run(name, run_fn, cfg, upstream=upstream)

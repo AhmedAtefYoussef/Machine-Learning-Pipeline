@@ -7,7 +7,6 @@ from __future__ import annotations
 import numpy as np
 
 from src import plotstyle as style
-from src.features import sources
 from src.plotstyle import SERIES
 from src.verdicts import ORIGINAL
 
@@ -59,27 +58,6 @@ def plot_validation_curves(p4: dict, stage: str = "full"):
     return fig
 
 
-def plot_cv_vs_validation(p4: dict, method: str):
-    """Question: does the held-out-day CV pick the same penalty as the validation split?"""
-    cv, rows = p4["cv"][method], _method_rows(p4, method)
-    mean, se = np.array(cv["mean"]), np.array(cv["se"])
-    top = max(mean.max(), max(r["val_r2"] for r in rows))
-    floor = top - 0.15
-    fig, ax = style.new_axes(f"{LABELS[method]}: do two ways of choosing the penalty agree?",
-                             "penalty alpha (log scale)", "R² on bikes", figsize=TALL)
-    ax.set_xscale("log")
-    ax.set_ylim(floor, top + 0.01)
-    ax.errorbar(cv["alphas"], np.maximum(mean, floor), yerr=se, fmt="s--", ms=3, capsize=2,
-                          color=SERIES["held_out_days"], label="held-out days: mean ± s.e.")
-    ax.plot([r["alpha"] for r in rows], [max(r["val_r2"], floor) for r in rows], "o-", ms=3,
-                       color=SERIES["validation"], label="validation split")
-    style.mark(ax, cv["cv_best_alpha"], "CV best")
-    style.mark(ax, cv["cv_1se_alpha"], "CV 1-s.e. rule", level=1)
-    style.mark(ax, p4["methods"][method]["lambda"], "validation best", level=2)
-    style.legend(ax, ncol=2)
-    return fig
-
-
 def plot_paths(p4: dict, method: str):
     """Question: which coefficients shrink first, and do correlated columns trade weight (temp vs atemp)?"""
     path = p4["paths"][method]
@@ -122,32 +100,5 @@ def plot_verdicts(p4: dict):
     ax.invert_yaxis()
     ax.grid(axis="x")
     ax.grid(axis="y", visible=False)
-    style.legend(ax, ncol=2)
-    return fig
-
-
-def _max_freq_by_column(freq: dict) -> list[float]:
-    """Highest selection frequency among each original column's own features."""
-    out = []
-    for c in ORIGINAL:
-        mine = [f for name, f in freq.items() if sources(name) == frozenset({c})]
-        out.append(max(mine) if mine else 0.0)
-    return out
-
-
-def plot_stability(p4: dict):
-    """Question: which original columns does the lasso select consistently when whole days are resampled?"""
-    cols = list(ORIGINAL)
-    x = np.arange(len(cols))
-    fig, ax = style.new_axes("Which columns does the lasso select consistently?", "",
-                             "selection frequency (best own feature)", figsize=TALL)
-    ax.bar(x - 0.2, _max_freq_by_column(p4["stability"]["l1"]["freq"]), 0.4, color=SERIES["lasso"], label="lasso")
-    ax.bar(x + 0.2, _max_freq_by_column(p4["stability"]["enet"]["freq"]), 0.4, color=SERIES["enet"],
-           label="elastic net")
-    ax.axhline(p4["stability_threshold"], color=style.MUTED, ls=":", lw=1)
-    style.note(ax, (len(cols) - 1.4, p4["stability_threshold"]), "selection threshold", offset=(0, 4))
-    ax.set_xticks(x)
-    ax.set_xticklabels(cols, rotation=45, ha="right")
-    ax.set_ylim(0, 1.05)
     style.legend(ax, ncol=2)
     return fig
