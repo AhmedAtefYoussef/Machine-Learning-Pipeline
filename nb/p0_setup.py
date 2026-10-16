@@ -64,6 +64,7 @@ for key, target in data_paths.items():
 
 # %%
 # The imports for the whole notebook.
+import os
 import sys
 
 sys.path.insert(0, os.getcwd())

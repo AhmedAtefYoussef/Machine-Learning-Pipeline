@@ -134,7 +134,7 @@ show(plots.plot_residual_profile(p1))
 #
 # **Gradient.** ∂ŷᵢ/∂w = q(ηᵢ)^(1−λ) xᵢ, so ∇L = (2/n) Σ cᵢ (ŷᵢ − yᵢ) q(ηᵢ)^(1−λ) xᵢ. The weight cᵢ jumps only where the residual is zero, so it adds no term. Our finite-difference check differs by {{p1.bonus.gradient_check:.9f}}.
 #
-# **Optimiser.** The loss is not quadratic, so the fixed-step bound does not apply. We use gradient descent with backtracking (halve the step until the loss falls enough), started from the Phase 1 weights; it stopped as "{{p1.bonus.stop_reason}}" after {{p1.bonus.iterations}} iterations. Phase 2 receives the MSE weights, not these.
+# **Optimiser.** The loss is not quadratic, so the fixed-step bound does not apply. We use gradient descent with backtracking (halve the step until the loss falls enough), started from the Phase 1 weights. It stops when the relative change in the loss stays below one part in ten billion for ten iterations in a row, so a gradient norm that is not tiny can still mean converged on this flat loss; it stopped as "{{p1.bonus.stop_reason}}" after {{p1.bonus.iterations}} iterations. Phase 2 receives the MSE weights, not these.
 #
 # **A control.** The bonus model changes two things at once: it is fitted on bikes, and it weights misses {{p1.bonus.k:g}} times. The "k = 1" row of the table fits on bikes without the asymmetry. Fitting on bikes alone raises the mean prediction by a factor {{bonus_control.shift_from_fitting_on_bikes:.3f}}, and the asymmetry adds a factor {{bonus_control.shift_from_asymmetry:.3f}}, for a total of {{bonus_control.total_shift:.2f}}.
 #

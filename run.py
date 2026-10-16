@@ -242,6 +242,8 @@ def report() -> int:
     code = tool("number_trace", "render", "report/report.template.md", "report/report.md", tail=5)
     if code == 0 and os.path.exists(os.path.join(ROOT, "report", "build_pdf.py")):
         code = run(PY + ["report/build_pdf.py"], tail=5)
+    if code == 0:  # the submitted copy at the repo root must match the fresh build
+        shutil.copyfile(os.path.join(ROOT, "report", "report.pdf"), os.path.join(ROOT, "report.pdf"))
     return code
 
 

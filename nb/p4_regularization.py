@@ -30,7 +30,7 @@
 # - **Phase 3 shapes the search.** The model we carry forward is under-fit, so we expect small penalties. The grids reach practically zero, and the unpenalised fit is a reference row. If a best penalty is the smallest value on its grid we read it as "no penalty wanted", not as a finding about that value, and we do not extend the grid again.
 # - **Design.** The Phase 3 target design plus the held-back columns `atemp`, `yr`, `instant`, `season` and `mnth`. The Expectation also lists `weekday`, but that column is already in the target design. Columns are standardised on training rows and the intercept is not penalised.
 # - **Objective.** (1/2n)‖y − b − Xw‖² + α·ρ‖w‖₁ + (α/2)(1 − ρ)‖w‖², with ρ = 0 for Ridge, ρ = 1 for Lasso and a grid of ρ values for Elastic Net. Ridge is solved in closed form; Lasso and Elastic Net by our own cyclic coordinate descent with soft-thresholding, warm-started along the path.
-# - **Grids.** 40 log-spaced values. Ridge runs from {{p4.grids.l2.min:.6f}} to {{p4.grids.l2.max:.0f}}; Lasso from the smallest penalty that zeroes every weight ({{p4.grids.l1.max:.3f}}) down to {{p4.grids.l1.min:.6f}}.
+# - **Grids.** 40 log-spaced values. Ridge runs from {{p4.grids.l2.min:.6f}} to {{p4.grids.l2.max:.0f}}; Lasso from the smallest penalty that zeroes every weight ({{p4.grids.l1.max:.3f}}) down to {{p4.grids.l1.min:.6f}}. Elastic Net uses the same 40 penalties for each mixing ratio ρ in {0.1, 0.3, 0.5, 0.7, 0.9, 0.95}; we stop at 0.95 because ρ = 1 is the Lasso itself.
 # - **Fits that did not converge.** {{p4.not_converged.count}} Lasso fits at one large grid value used all {{p4.solver.max_sweeps}} sweeps, because exact copies slow coordinate descent there. None of them is a chosen model.
 
 # %%
@@ -134,7 +134,7 @@ none = final["unregularised"]
 stage_b = pd.DataFrame({**final["methods"], "none": {**none, "lambda": none["alpha"]}}).T.rename_axis("method").reset_index()
 table(stage_b[["method", "lambda", "l1_ratio", "val_r2", "day_block_r2", "chrono_r2", "n_nonzero", "n_features"]],
       f"Stage B on {final['n_columns']} columns; within noise of the best: {rec['candidates']}; solver runs that used all sweeps: "
-      f"{p4['not_converged_final']}", stage_b["method"] == rec["method"])
+      f"{p4['not_converged_final']['count']}", stage_b["method"] == rec["method"])
 
 # %% [markdown]
 # ## Outcome — Phase 4
