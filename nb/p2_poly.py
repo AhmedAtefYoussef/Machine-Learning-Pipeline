@@ -34,12 +34,10 @@
 import src.phases.p2 as p2mod
 from src.poly import lift_weights
 
-p2 = phase("p2", p2mod.run, CFG, upstream="p1", live=True, recompute_all=RECOMPUTE_ALL)   # reads artifacts/p1.json, fits Phase 2 here and now
+p2 = phase("p2", p2mod.run, CFG, RECOMPUTE_ALL, upstream="p1", live=True)
 assert abs(p2["init_loss"] - p1["train_loss_final"]) <= 1e-9, "the hand-over from Phase 1 to Phase 2 is broken"
-view.p2_handover(p1, p2)
-
-# %%
-# How the Phase 1 weights are placed into the longer Phase 2 vector.
+print(f"first Phase 2 loss {p2['init_loss']:.9f} = last Phase 1 loss {p1['train_loss_final']:.9f}; "
+      f"{len(p2['feature_names'])} weights, {p2['iterations']} iterations")
 show_source(lift_weights)
 
 # %% [markdown]
@@ -49,34 +47,18 @@ show_source(lift_weights)
 # - **Powers of `temp`.** Demand rises with temperature and flattens when it is hot. At the chosen degree, powers of `temp` alone give {{p2.power_col_sweep.0.val_r2:.4f}}, adding `hum` gives {{p2.power_col_sweep.1.val_r2:.4f}} and adding `windspeed` as well gives {{p2.power_col_sweep.2.val_r2:.4f}}. Differences below {{p2.plateau_tol}} are far inside the noise of our validation set (standard error {{p2.val_bootstrap.se:.4f}}), so by our rule we keep the smallest set: `temp` only.
 # - **Not expanded.** Hour dummies, weather dummies and `holiday` are 0/1, so their powers are themselves. `trend` is not raised to a power, because a polynomial in time bends away sharply outside the observed dates. The day-of-year terms are already non-linear.
 
-# %%
-# The expanded design: which blocks and power columns, how many new columns, and how hard it is to optimise.
-view.p2_design(p2)
-
 # %% [markdown]
 # ### Justification: degree
 # "Degree" is the highest total degree of any term: the interaction products are degree 2 and the powers go up to the chosen degree. With every candidate fitted by our own gradient descent from the Phase 1 weights, validation R² is {{p2.degree_sweep.0.val_r2:.4f}} at degree 1 (interactions only), {{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3 and {{p2.degree_sweep.3.val_r2:.4f}} at degree 4. Our rule, fixed before the run, is the smallest degree within {{p2.plateau_tol}} of the best: degree {{p2.degree}}. The square captures "warmer is better", the cube captures the flattening at high temperature; a fourth power adds nothing. The learning rate is again half the stability bound, recomputed for this design (λ_max {{p2.lambda_max:.3f}}, lr {{p2.lr:.4f}}), with the same stopping rule as Phase 1.
 
 # %%
-# Validation R² for each candidate degree (the highlighted row is our choice).
-view.p2_degree_sweep(p2)
-
-# %%
-# The same sweep as a plot.
-show(plots.plot_degree_sweep(p2))
-
-# %%
-# Which variables get powers: temperature alone, or humidity and wind as well.
-view.p2_power_cols(p2)
-
-# %%
-# What the working-day x hour block adds.
-view.p2_ablation(p2)
-
-# %%
-# Phase 2 against Phase 1 on the validation rows, and how the run ended.
-display(view.p2_scores(p1, p2))
-display(view.p2_fit(p2))
+# Validation R² for each degree, for each set of power columns, and without the workingday x hour block.
+runs = [(f"degree {r['degree']}", r) for r in p2["degree_sweep"]]
+runs += [("powers of " + ", ".join(r["power_cols"]), r) for r in p2["power_col_sweep"]]
+runs += [("without the workingday x hour block", p2["block_ablation"]["without_wd_x_hr"])]
+sweep = pd.DataFrame([{"setting": name, "weights": r["n_features"], "train_r2": r["train_r2"], "val_r2": r["val_r2"]} for name, r in runs])
+chosen = [f"degree {p2['degree']}", "powers of " + ", ".join(p2["power_cols"])]
+table(sweep, "What we varied in Phase 2 (highlighted: the choices we kept)", sweep["setting"].isin(chosen))
 
 # %%
 # The residuals by hour and day type before (Phase 1) and after (Phase 2) the expansion.

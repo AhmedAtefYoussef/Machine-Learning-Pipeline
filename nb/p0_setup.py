@@ -39,102 +39,78 @@ import os
 import shutil
 import zipfile
 
+import yaml
+
 BUNDLE = """
 @@PROJECT_BUNDLE@@
 """
 DATA_SHA256 = {"train": "@@SHA_TRAIN@@", "test": "@@SHA_TEST@@"}   # the data files our stored results were computed from
 
+# Unpack the project files that are not here yet; an existing file is never overwritten.
 with zipfile.ZipFile(io.BytesIO(base64.b64decode(BUNDLE))) as bundle:
-    members = bundle.namelist()
-    missing_members = [m for m in members if not os.path.exists(m)]
-    for member in missing_members:
-        bundle.extract(member, ".")
-print(f"project files: {len(members)} in the bundle, {len(missing_members)} unpacked now, "
-      f"{len(members) - len(missing_members)} already present")
+    new_files = [name for name in bundle.namelist() if not os.path.exists(name)]
+    bundle.extractall(".", members=new_files)
+print(f"project files: {len(new_files)} unpacked now, {len(bundle.namelist()) - len(new_files)} already present")
 del BUNDLE
 
-import yaml
-
-DATA_PATHS = {key: yaml.safe_load(open("config.yaml", encoding="utf-8"))["paths"][key] for key in DATA_SHA256}
-
-
-def find_data_file(target):
-    """An uploaded copy of a data file: next to the notebook, or in Colab's upload folder."""
+# Put each data file where config.yaml expects it: copy an upload from next to the notebook or from Colab's /content.
+paths = yaml.safe_load(open("config.yaml", encoding="utf-8"))["paths"]
+data_paths = {key: paths[key] for key in DATA_SHA256}
+for target in data_paths.values():
     for folder in (".", "/content"):
-        candidate = os.path.join(folder, os.path.basename(target))
-        if os.path.isfile(candidate):
-            return candidate
-    return None
+        upload = os.path.join(folder, os.path.basename(target))
+        if not os.path.isfile(target) and os.path.isfile(upload):
+            os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+            shutil.copy(upload, target)
 
-
-def place_data_files():
-    """Copy uploaded data files to the paths config.yaml expects; return the ones still missing."""
-    still_missing = []
-    for target in DATA_PATHS.values():
-        if not os.path.isfile(target):
-            found = find_data_file(target)
-            if found is None:
-                still_missing.append(target)
-            else:
-                os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
-                shutil.copy(found, target)
-    return still_missing
-
-
-needed = place_data_files()
-if needed:
-    names = [os.path.basename(target) for target in needed]
+# Still missing: on Colab ask for the files (a second upload may be renamed 'train (1).csv', so match on the stem).
+missing = [target for target in data_paths.values() if not os.path.isfile(target)]
+if missing:
     try:
-        from google.colab import files as colab_files
+        from google.colab import files
     except ImportError:
-        raise FileNotFoundError(f"put {names} next to this notebook (or in data/) and run this cell again") from None
-    print("please choose these files in the upload box:", names)
-    for name, content in colab_files.upload().items():
-        for target in needed:   # Colab may rename a second upload to 'train (1).csv', so match on the stem
+        raise FileNotFoundError(f"put {missing} next to this notebook (or in data/) and run this cell again") from None
+    for name, content in files.upload().items():
+        for target in missing:
             if name.startswith(os.path.splitext(os.path.basename(target))[0]):
                 os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
-                with open(target, "wb") as handle:
-                    handle.write(content)
-    needed = place_data_files()
-    if needed:
-        raise FileNotFoundError(f"still missing: {needed}; upload them and run this cell again")
+                open(target, "wb").write(content)
+    assert all(os.path.isfile(target) for target in data_paths.values()), "a data file is still missing; upload both"
 
-DATA_MATCHES = True
-for key, target in DATA_PATHS.items():
-    with open(target, "rb") as handle:
-        digest = hashlib.sha256(handle.read().replace(b"\r\n", b"\n")).hexdigest()
-    same = digest == DATA_SHA256[key]
-    DATA_MATCHES = DATA_MATCHES and same
-    print(f"{target}: {'the file our stored results were computed from' if same else 'DIFFERENT from the file our stored results were computed from'}")
-if not DATA_MATCHES:
-    print("The stored artifacts do not belong to these data files: set RECOMPUTE_ALL = True in the configuration cell.")
+# Do the data files match the ones our stored artifacts were computed from? (line endings normalised)
+for key, target in data_paths.items():
+    digest = hashlib.sha256(open(target, "rb").read().replace(b"\r\n", b"\n")).hexdigest()
+    print(target, "matches the stored results" if digest == DATA_SHA256[key] else "DIFFERENT: set RECOMPUTE_ALL = True below")
 
 # %%
-# The configuration and the imports for the whole notebook: every knob lives in CFG, which is loaded from config.yaml.
+# The imports for the whole notebook.
 import sys
 
 sys.path.insert(0, os.getcwd())
 
 import numpy as np
 import pandas as pd
-from IPython.display import display
 
-from src import nbview as view, plots
-from src.common import config_seed, load_config, load_train, seeded_split, team_seed
-from src.nbtools import phase, show_source
-from src.plots import show  # displays a figure as a PNG in the notebook
+from src import plots
+from src.common import config_seed, load_config, load_train, read_artifact, seeded_split, team_seed
+from src.nbtools import phase, show_source, table
+from src.plots import show   # displays a figure as a PNG in the notebook
 
+# %%
+# The configuration: every knob lives in CFG (from config.yaml); the seed comes from the team ids.
 CFG = load_config()
 RECOMPUTE_ALL = False   # True: recompute every phase from scratch (about 40 minutes) instead of loading artifacts
 SEED = config_seed(CFG)
 assert team_seed(["34521", "40218", "41190"]) == 41698   # the worked example of the brief
-view.p0_config(CFG, SEED)
+table({"team ids": CFG["team_ids"], "seed": SEED, "Phase 1 learning rate (fraction of the stability bound)":
+       CFG["p1"]["lr_fraction_of_bound"], "Phase 2 degree candidates": CFG["p2"]["degree_candidates"],
+       "plateau tolerance": CFG["p2"]["plateau_tol"]}, "Configuration (config.yaml)")
 
 # %%
 # The labelled data and the one seeded 80/20 split that every reported score uses.
 train_all = load_train(CFG)
 train_df, val_df = seeded_split(train_all, SEED, CFG["split"]["test_size"])
-view.p0_split(train_all, train_df, val_df)
+print(f"labelled rows {train_all.shape}, training rows {train_df.shape}, validation rows {val_df.shape}")
 
 # %%
 # Mean demand by hour for working and non-working days: the shape every model has to learn.
@@ -142,7 +118,11 @@ show(plots.plot_demand_profile(train_df))
 
 # %%
 # Oddities of the data that we checked before modelling.
-view.p0_quirks(train_all)
+d = train_all
+table({"rows with hum == 0": int((d.hum == 0).sum()), "share of rows with windspeed == 0": round(float((d.windspeed == 0).mean()), 4),
+       "rows with weathersit == 4": int((d.weathersit == 4).sum()), "correlation of temp and atemp": round(float(d.temp.corr(d.atemp)), 4),
+       "rows where workingday != (Mon-Fri and not a holiday)": int((d.workingday != (d.weekday.between(1, 5) & (d.holiday == 0))).sum()),
+       "rows where season != calendar quarter of mnth": int((d.season != (d.mnth - 1) // 3 + 1).sum())}, "Quirks of the data")
 
 # %% [markdown]
 # ### What we saw in the data before modelling

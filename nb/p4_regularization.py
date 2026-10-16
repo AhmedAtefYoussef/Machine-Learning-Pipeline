@@ -34,39 +34,30 @@
 # - **Honesty note.** {{p4.not_converged.count}} Lasso fits, all at one large grid value far from the chosen one, used the full {{p4.solver.max_sweeps}} sweeps without meeting our tolerance; the exactly duplicated columns in this design make coordinate descent crawl there. None of them is a chosen model.
 
 # %%
-# Phase 4 adds the held-back columns to the Phase 3 target design and runs our three solvers; it is the slowest phase, so the stored artifact is loaded when nothing upstream changed.
+# Phase 4 adds the held-back columns to the Phase 3 target design; the slowest phase, so a valid stored artifact is loaded.
 from src import plots_p4
+from src.common import sha256_file
 from src.phases import p4 as p4mod
-from src.regularization import cd_sweep, enet_cd_gram, ridge_closed_form, soft_threshold
+from src.regularization import cd_sweep, soft_threshold
 
-p4 = phase("p4", p4mod.run, CFG, upstream="p3", recompute_all=RECOMPUTE_ALL)   # python run.py p4 recomputes it
-
-# %%
-# The chain: the target level from Phase 3, the candidate columns added, and the resulting width.
-view.p4_design(p3, p4)
+p4 = phase("p4", p4mod.run, CFG, RECOMPUTE_ALL, upstream="p3")   # python run.py p4 recomputes it
 
 # %%
-# Baseline: the same design with a negligible penalty (closed-form least squares).
-view.p4_unregularised(p4)
+# The chain, asserted: built on the Phase 3 artifact on disk, from its target level and width.
+origin, level = p4["design_from"], p3["target_complexity"]
+assert p4["upstream_sha256"] == sha256_file("artifacts/p3.json"), "Phase 4 was not built from this Phase 3 artifact"
+assert origin["level"] == level["level"] and origin["n_features_before_candidates"] == level["n_features"], "wrong Phase 3 level"
+print(f"level {origin['level']}: {origin['n_features_before_candidates']} weights + {len(origin['candidates_added'])} candidate columns "
+      f"= {p4['n_features']}; solver runs that used all sweeps: {p4['not_converged']['count']}")
+show_source(soft_threshold, cd_sweep)
 
 # %%
-# How the validation R² of each method moves with the penalty.
+# How the validation R² of each method moves with the penalty, and the penalty each one chose (highlighted: best).
 show(plots_p4.plot_validation_curves(p4))
-
-# %%
-# The penalty each method chose (best validation R², ties go to the larger penalty), and the elastic-net ratios.
-display(view.p4_methods(p4))
-display(view.p4_enet_ratios(p4))
-
-# %%
-# Our solvers: closed-form Ridge, and one sweep of coordinate descent with soft-thresholding, which is the whole of Lasso and Elastic Net.
-show_source(soft_threshold, ridge_closed_form, cd_sweep, enet_cd_gram)
-
-# %%
-# The chain, asserted: this phase was built on the Phase 3 artifact that is on disk now, and on its target level.
-rows = view.p4_chain_rows(p3, p4)
-assert all(passed for *_, passed in rows), "Phase 4 was not built from this Phase 3 artifact and its target level"
-view.checks(rows, "Phase 4 consumed Phase 3")
+none = p4["unregularised"]
+methods = pd.DataFrame({**p4["methods"], "none": {**none, "lambda": none["alpha"]}}).T.rename_axis("method").reset_index()
+table(methods[["method", "lambda", "l1_ratio", "val_r2", "day_block_r2", "chrono_r2", "n_nonzero", "n_features"]],
+      "Chosen penalty per method; 'none' is the same design with a negligible penalty", methods["method"] == p4["full_design_best"]["method"])
 
 # %% [markdown]
 # ### Justification: fair comparison of the three methods
@@ -74,8 +65,9 @@ view.checks(rows, "Phase 4 consumed Phase 3")
 # The three methods get the same design matrix, the same training rows, the same validation rows, the same day folds, the same number of grid points and the same selection rule. Elastic Net has a second knob and therefore six times as many candidates, which gives it a small advantage on the validation set; that is one reason we do not compare on validation alone. For each method at its chosen setting we report validation R² with a bootstrap interval, the held-out-day R² and the chronological R², and for each pair of methods a paired bootstrap interval of the difference on the same validation rows. A difference whose interval contains zero is a tie.
 
 # %%
-# Fair comparison: the table above holds the three validators; these are the paired differences between the methods.
-view.p4_comparisons(p4)
+# Fair comparison: paired bootstrap differences between the methods (an interval that contains zero is a tie).
+diffs = pd.DataFrame(p4["comparisons"]).T.rename_axis("comparison").reset_index()
+table(diffs, "Differences in validation R² between methods, with their intervals")
 
 # %% [markdown]
 # ### Justification: choice of lambda per method
@@ -83,24 +75,16 @@ view.p4_comparisons(p4)
 # For each method we take the penalty with the highest validation R² on bikes (ties go to the larger penalty), because the task says tuning uses the validation set and R² on bikes is the metric we are scored on. Two checks sit beside it in the table below: the penalty that is best on held-out days inside the training portion, and the "one standard error" penalty, the largest one whose held-out-day score is within one standard error of that best. If the validation choice were an accident of this particular split, these would disagree strongly with it. Because we select on the validation rows, the validation scores of this phase are slightly optimistic; the held-out-day and chronological columns are not affected by that.
 
 # %%
-# Two ways to pick the penalty: best validation R² against held-out-day cross-validation.
-view.p4_lambda_picks(p4)
-
-# %%
-# The lasso penalty chosen by the held-out days against the one chosen by the validation split.
-show(plots_p4.plot_cv_vs_validation(p4, "l1"))
+# Two ways to pick the penalty: best validation R² against held-out-day cross-validation (best and 1-s.e. rule).
+picks = pd.DataFrame(p4["cv"]).T.rename_axis("method").reset_index()
+picks["validation_best"] = [p4["methods"][m]["lambda"] for m in picks["method"]]
+picks["r2_at_validation_best"] = [p4["methods"][m]["val_r2"] for m in picks["method"]]
+table(picks[["method", "validation_best", "cv_best_alpha", "cv_1se_alpha", "r2_at_validation_best", "val_r2_at_cv_best", "val_r2_at_cv_1se"]],
+      "Penalty by validation and by held-out-day CV")
 
 # %%
 # How the lasso coefficients shrink as the penalty grows.
 show(plots_p4.plot_paths(p4, "l1"))
-
-# %%
-# The same for ridge, which shrinks but never sets a weight to zero.
-show(plots_p4.plot_paths(p4, "l2"))
-
-# %%
-# Where each correlated pair enters the lasso path.
-view.p4_entry(p4)
 
 # %% [markdown]
 # ### Justification: the verdict rule
@@ -115,16 +99,11 @@ view.p4_entry(p4)
 # Lasso evidence is reported next to the drop tests (how many of the column's own features Lasso keeps, how often over 50 resamples of training days, and where it enters the path), but a Lasso zero alone does not decide a verdict: with copies in the design, which copy Lasso keeps is partly arbitrary.
 
 # %%
-# The verdict for every original column, from the drop tests.
-view.p4_verdicts(p4)
-
-# %%
-# The drop tests as a plot.
+# The verdict for every original column, from the drop tests, and the drop tests as a plot.
+verdicts = [{"column": c, "verdict": v["verdict"], "drop_alone": v["numbers"]["drop_alone"]["delta"], "solo_r2": v["numbers"]["solo_r2"],
+             "lasso_max_freq": v["numbers"]["lasso"]["max_freq_own"], "carried_by": v["carried_by"]} for c, v in p4["column_verdicts"].items()]
+table(pd.DataFrame(verdicts), "Verdict for every original column (drop_alone = validation R² lost when the column is removed)")
 show(plots_p4.plot_verdicts(p4))
-
-# %%
-# How consistently the lasso selects each column when whole days are resampled.
-show(plots_p4.plot_stability(p4))
 
 # %% [markdown]
 # ### Justification: the survivor rule
@@ -135,7 +114,11 @@ show(plots_p4.plot_stability(p4))
 
 # %%
 # The survivors: Lasso on the design of useful columns only, non-zero at its chosen penalty and stable over resampled days.
-view.p4_survivors(p4)
+pick = p4["selection"]
+table({**{f"survivors, {k}": v for k, v in p4["survivor_counts"].items()}, "selection lasso: penalty": pick["lambda"],
+       "selection lasso: validation R²": pick["val_r2"], "selection lasso: non-zero": f"{pick['n_nonzero']} of {pick['n_columns']}",
+       "original columns kept": p4["survivors_original"], "expanded survivor columns": len(p4["survivors_expanded"])},
+      "The survivors handed to Phase 5")
 
 # %% [markdown]
 # ### Justification: final model on the surviving columns
@@ -143,19 +126,13 @@ view.p4_survivors(p4)
 # Stage A above answers "which columns matter" and needs every column in the design. It is not the model we want to ship: the columns judged redundant add nothing (dropping `mnth` alone changes validation R² by {{p4.column_verdicts.mnth.numbers.drop_alone.delta:.4f}}, interval {{p4.column_verdicts.mnth.numbers.drop_alone.lo:.4f}} to {{p4.column_verdicts.mnth.numbers.drop_alone.hi:.4f}}; a negative number means the model is better without it), and several of them are extra descriptions of time, which is exactly where our chronological split shows the model to be fragile. So we repeat the same search for the three methods on the surviving columns only (stage B) and recommend among those. The rule for choosing among the three methods was fixed before the first Phase 4 run: among the methods whose validation difference to the best is within the paired bootstrap noise, take the one with the best held-out-day R². What we added after seeing the first run is this second stage itself, that is, applying the rule to models fitted on the survivors; the earlier runs are in the git history.
 
 # %%
-# Stage B: the same search on the surviving columns only, and the method we recommend.
-display(view.p4_methods(p4, "final"))
-display(view.p4_unregularised(p4, "final"))
-display(view.p4_comparisons(p4, "final"))
-display(view.p4_recommended(p4))
-
-# %%
-# The validation curves of stage B.
-show(plots_p4.plot_validation_curves(p4, stage="final"))
-
-# %%
-# Does a penalty rescue the over-fit top of the ladder? (informational)
-view.p4_rich(p4)
+# Stage B: the same search on the surviving columns only (highlighted: the method we recommend).
+final, rec = p4["final"], p4["recommended"]
+none = final["unregularised"]
+stage_b = pd.DataFrame({**final["methods"], "none": {**none, "lambda": none["alpha"]}}).T.rename_axis("method").reset_index()
+table(stage_b[["method", "lambda", "l1_ratio", "val_r2", "day_block_r2", "chrono_r2", "n_nonzero", "n_features"]],
+      f"Stage B on {final['n_columns']} columns; within noise of the best: {rec['candidates']}; solver runs that used all sweeps: "
+      f"{p4['not_converged_final']}", stage_b["method"] == rec["method"])
 
 # %% [markdown]
 # ## Outcome — Phase 4

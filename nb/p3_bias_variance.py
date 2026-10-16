@@ -45,34 +45,30 @@
 from src import plots_p3
 from src.phases import p3 as p3mod
 
-p3 = phase("p3", p3mod.run, CFG, upstream="p2", live=True, recompute_all=RECOMPUTE_ALL)   # runs Phase 3 here and now (about 15 seconds)
+p3 = phase("p3", p3mod.run, CFG, RECOMPUTE_ALL, upstream="p2", live=True)   # about 15 seconds
 
 # %%
-# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R².
-view.p3_chain(p2, p3)
+# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit reproduces its validation R².
+anchor = p3["anchor"]
+assert (anchor["degree"], anchor["blocks"], anchor["power_cols"]) == (p2["degree"], p2["blocks"], p2["power_cols"])
+assert anchor["n_features"] == len(p2["feature_names"]), "the anchor is not the Phase 2 design"
+assert abs(anchor["p2_val_r2"] - p2["val_r2"]) < 1e-12 and abs(p3["anchor_check"]) < 1e-6, "the anchor does not reproduce Phase 2"
+print(f"anchor = Phase 2 design ({anchor['n_features']} weights); closed form minus gradient descent: {p3['anchor_check']:.1e}")
 
 # %%
-# The complexity ladder, with the three validators for every level (the highlighted row is the target level).
-view.p3_ladder(p3)
-
-# %%
-# The same ladder as a plot.
+# The complexity ladder with the three validators for every level (highlighted: the target level), and as a plot.
+ladder = pd.json_normalize(p3["ladder"])
+table(ladder[["name", "n_features", "seeded.train_r2", "seeded.r2", "day_block.r2", "chrono.r2"]],
+      f"Complexity ladder; over-fit from level {p3['overfit_from_level']}", ladder["name"] == p3["target_level"])
 show(plots_p3.plot_ladder(p3))
 
 # %%
 # The degree axis alone: anchor blocks and power columns fixed, only the degree changes.
-view.p3_degree_axis(p3)
-
-# %%
-# The degree axis as a plot.
-show(plots_p3.plot_degree_axis(p3))
+axis = pd.json_normalize(p3["degree_axis"])
+table(axis[["degree", "n_features", "seeded.r2", "day_block.r2", "chrono.r2"]], "Degree axis (validation R² by validator)")
 
 # %%
 # Learning curves for the anchor, the target and the top of the ladder.
-view.p3_learning_curves(p3)
-
-# %%
-# The learning curves as a plot.
 show(plots_p3.plot_learning_curves(p3))
 
 # %% [markdown]
@@ -82,11 +78,11 @@ show(plots_p3.plot_learning_curves(p3))
 
 # %%
 # The anchor and the target scored by the seeded split, held-out days and the chronological split, with their gaps.
-view.p3_estimates(p3)
-
-# %%
-# The same estimates as a plot.
-show(plots_p3.plot_three_estimates(p3))
+gaps = p3["gaps"]
+designs = [{"design": "anchor", **p3["estimates"], "gaps": gaps["anchor"]}, {"design": "target", **p3["estimates_target"], "gaps": gaps["target"]}]
+est = pd.json_normalize(designs)
+table(est[["design", "seeded.r2", "seeded.lo", "seeded.hi", "day_holdout.r2", "day_holdout.sd", "chrono.r2", "gaps.leakage", "gaps.drift"]],
+      "Three estimates (highlighted: the target)", est["design"] == "target")
 
 # %% [markdown]
 # ### Justification: which estimate to trust
@@ -97,16 +93,10 @@ show(plots_p3.plot_three_estimates(p3))
 # - **Does it change the diagnosis?** No in kind, yes in degree: see the Outcome.
 
 # %%
-# Chronological detail: the late period has a much higher level of demand (growth) than the early one.
-view.p3_chrono_detail(p3)
-
-# %%
-# How much variance is left once the design cells are fully known (an optimistic ceiling).
-view.p3_noise_floor(p3)
-
-# %%
-# The diagnosis, and the complexity we carry forward.
-view.p3_diagnosis(p3)
+# The diagnosis, and the complexity level we carry forward to Phase 4.
+level = p3["target_complexity"]
+table({**p3["diagnosis"], "target": level["level"], "target weights": level["n_features"], "target degree": level["degree"],
+       "target power columns": level["power_cols"], "target blocks": level["blocks"]}, "Diagnosis and target complexity")
 
 # %% [markdown]
 # ### Justification: exponent check
@@ -115,8 +105,9 @@ view.p3_diagnosis(p3)
 
 # %%
 # The target design in closed form under each candidate exponent (the chain itself uses the exponent from Phase 1).
-display(view.p3_exponents(p3))
-show(plots.plot_target_power(p1, p3))
+check = pd.DataFrame(p3["target_power_check"])
+table(check[["power", "seeded_r2", "day_block_r2", "chrono_r2"]], f"Target exponent on the target design (in use: {p3['target_power_used']}; "
+      f"within the plateau tolerance: {p3['target_power_consistent']})", np.isclose(check["power"], p3["target_power_used"]))
 
 # %% [markdown]
 # ### Justification: target complexity
