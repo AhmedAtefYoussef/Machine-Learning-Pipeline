@@ -15,8 +15,8 @@ import pandas as pd
 from src.common import (Target, bootstrap_r2, chrono_split, config_seed, load_config, load_train,
                         paired_bootstrap_delta_r2, r2, read_artifact, rmse, seeded_split, set_threads,
                         write_artifact)
-from src.features import BASE, HR, Design, DesignSpec
-from src.validation import fit_predict, learning_curve, noise_floor, three_validators
+from src.features import Design, DesignSpec
+from src.validation import fit_predict, ladder_specs, learning_curve, noise_floor, three_validators
 
 ANCHOR_CHECK_TOL = 2e-3      # closed form here vs gradient descent in Phase 2
 OVERFIT_MARGIN = 0.002       # a level counts as worse than the target when its validation R2 is this much lower
@@ -44,25 +44,6 @@ def build_context(cfg: dict, p1: dict) -> Context:
     train_df, val_df = seeded_split(all_df, seed, cfg["split"]["test_size"])
     return Context(all_df, train_df, val_df, cfg["chrono"]["cut_date"], cfg["day_block_folds"],
                    cfg["p3"]["fit_alpha"], Target.from_artifact(p1), seed)
-
-
-def ladder_specs(cfg: dict, anchor_spec: DesignSpec) -> list[dict]:
-    """Cumulative ladder: levels before `phase2` are degree 1; the phase2 level is the anchor; later levels extend it."""
-    levels, accumulated, seen_anchor = [], [], False
-    for index, level in enumerate(cfg["p3"]["ladder"]):
-        accumulated += [b for b in level["add"] if b not in accumulated]
-        if level.get("phase2"):
-            assert set(accumulated) <= set(anchor_spec.blocks), "Phase 2 design lacks blocks of earlier levels"
-            spec, seen_anchor = anchor_spec, True
-        elif not seen_anchor:
-            base = [c for c in BASE if c not in HR] if level.get("drop_hour") else list(BASE)
-            spec = DesignSpec(base=tuple(base), blocks=tuple(accumulated))
-        else:
-            extra = [b for b in accumulated if b not in anchor_spec.blocks]
-            spec = DesignSpec(base=anchor_spec.base, power_cols=anchor_spec.power_cols, degree=anchor_spec.degree,
-                              blocks=anchor_spec.blocks + tuple(extra))
-        levels.append({"name": level["name"], "index": index, "spec": spec, "is_anchor": bool(level.get("phase2"))})
-    return levels
 
 
 # ----------------------------------------------------------------------------- scoring rows
@@ -184,8 +165,8 @@ def gaps_block(est: dict) -> dict:
 
 # ----------------------------------------------------------------------------- run
 
-def run(cfg: dict | None = None) -> dict:
-    """Execute Phase 3 and write artifacts/p3.json."""
+def run(cfg: dict | None = None, write: bool = True) -> dict:
+    """Execute Phase 3; write artifacts/p3.json when write=True. Returns the payload."""
     cfg = cfg if cfg is not None else load_config()
     set_threads(cfg.get("threads", 1))
     p1, p2 = read_artifact("p1"), read_artifact("p2")
@@ -253,7 +234,8 @@ def run(cfg: dict | None = None) -> dict:
                    "p2_val_r2": p2["val_r2"]},
         "cut_date": ctx.cut_date, "k_folds": ctx.k, "fit_alpha": ctx.alpha, "back_method": ctx.target.back_method,
         "plateau_tol": float(cfg["p3"]["plateau_tol"])}
-    write_artifact("p3", payload, upstream="p2", cfg=cfg)
+    if write:
+        write_artifact("p3", payload, upstream="p2", cfg=cfg)
     return payload
 
 

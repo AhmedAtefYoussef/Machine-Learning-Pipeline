@@ -1,0 +1,289 @@
+{
+  "gate": "v3",
+  "date": "2026-10-16",
+  "branch": "v3/modular",
+  "deterministic": "handoff/audit/verify_v3.log: ruff clean, 269 tests pass, leak_scan 0, chain_check 5/5, expectation_check 5 files, notebook 89 cells errors=0, submission_check 0/0, number_trace 0 untraced, req_check 15/15 (not rerun, per brief)",
+  "summary": {
+    "pass": 38,
+    "warn": 6,
+    "fail": 2
+  },
+  "results": [
+    {
+      "id": "D-REPORT-ROOT",
+      "requirement": "1.11b report PDF deliverable is current",
+      "status": "fail",
+      "evidence": "report.pdf (root, linked by README) dated 2026-10-08 commit 00ae6ca; report/report.pdf rebuilt 2026-10-16 (19f3d93); files differ; root copy lacks v3 disclosures (Presidents' Day, day-block interval 0.932-0.950, exponent/C6 statement, 1-s.e. sparsity price). Fix: cp report/report.pdf report.pdf and make run.py report copy it."
+    },
+    {
+      "id": "D-WALKTHROUGH",
+      "requirement": "No stale statements across notebook/report/README/STATE/WALKTHROUGH",
+      "status": "fail",
+      "evidence": "docs/WALKTHROUGH.md line 35 cites src/nbview.py, styled, facts, checks (removed in W3a aaf9f9b; tables now via src.nbtools.table); line 124 cites plot_target_power, which no longer exists in src/."
+    },
+    {
+      "id": "D-DEGREE-AXIS",
+      "requirement": "Text claims match artifacts (Phase 3)",
+      "status": "warn",
+      "evidence": "rush_hour.ipynb Outcome Phase 3 says 'degree axis moved validation R2 by only 0.0041' and Justification 'what we varied' says degree 1 to 8; table above (p3.degree_axis) shows 0.9045 at degree 1 to 0.9178 (range 0.013). 0.0041 = p3.diagnosis.degree_axis_range over degrees 2-8 (report says 2 to 8). Fix nb/p3_bias_variance.py Outcome: 'from degree 2 to 8'."
+    },
+    {
+      "id": "D-L1RATIO",
+      "requirement": "Justification for lambda and l1_ratio range in notebook",
+      "status": "warn",
+      "evidence": "rush_hour.ipynb 'Justification: search ranges and strategy' gives lambda grids but only 'a grid of rho values' for Elastic Net; the six values 0.1-0.95 appear only in report section 5. Fix: add the l1_ratio grid and why it stops at 0.95 to that cell in nb/p4_regularization.py."
+    },
+    {
+      "id": "H12-SETUP",
+      "requirement": "H12 cells <= 12 lines with a comment",
+      "status": "warn",
+      "evidence": "Cell 1 '#@title Setup' is 2008 non-blank lines (embedded bundle, collapsed). All other 54 code cells have 2-10 lines and a leading comment. Fix: none required; WALKTHROUGH should state the cell is a generated bundle to skip."
+    },
+    {
+      "id": "H12-OS",
+      "requirement": "H12 every cell explainable",
+      "status": "warn",
+      "evidence": "Cell 2 ('The imports for the whole notebook') calls os.getcwd() without importing os (works only because the setup cell imported it). Fix: add 'import os' to the imports cell in nb/p0_setup.py."
+    },
+    {
+      "id": "H12-RAWDICT",
+      "requirement": "H12 readable outputs",
+      "status": "warn",
+      "evidence": "Cell 66 table caption prints raw Python \"['l2', 'l1', 'enet']\" and \"{'count': 0, 'where': {}}\"; cell 16 prints unrounded floats (0.746193407095448). Fix: format with ', '.join and p4['not_converged_final']['count'], round lists in nbtools.table."
+    },
+    {
+      "id": "D-ASYM-STOP",
+      "requirement": "Bonus convergence claim backed",
+      "status": "warn",
+      "evidence": "p1.bonus.stop_reason 'converged' with grad_norm_final 0.56 on a loss of 12720 (relative, backtracking rule in src/gd_asym.py). Claim is consistent with its own rule but the notebook does not state the bonus stopping rule. Fix: one sentence in 'Justification: bonus'."
+    },
+    {
+      "id": "R1",
+      "requirement": "1.7 five algorithms in order",
+      "status": "pass",
+      "evidence": "rush_hour.ipynb sections Phase 1..5 then Phase 6 (cells 8-84); artifacts/p1..p5.json"
+    },
+    {
+      "id": "R2-chain",
+      "requirement": "1.7 chaining mandatory",
+      "status": "pass",
+      "evidence": "recomputed upstream_sha256 p1(null)..p6 all match; cell 87 'chain assertions passed'; p3.anchor == p2 design (cell 38); p4.design_from == p3.target_complexity (cell 54); p5.features subset of p4.survivors_expanded (cell 71)"
+    },
+    {
+      "id": "R4-seed",
+      "requirement": "1.8 team seed from roster",
+      "status": "pass",
+      "evidence": "sha256('16006283_16007032_16009837') % 100000 = 44615 recomputed; seed 44615 in p1..p6 and config cell 3; example IDs give 41698 (asserted in cell 3)"
+    },
+    {
+      "id": "R4-split",
+      "requirement": "1.8 single seeded 80/20 split + one chronological split",
+      "status": "pass",
+      "evidence": "only train_test_split call src/common.py:120; cell 4 8708/2178 rows; chrono cut 2012-07-01 (8151/2735) p3 / cell 42"
+    },
+    {
+      "id": "SEED-INTEGRITY",
+      "requirement": "1.12 Phase 1 weights carried into Phase 2 match",
+      "status": "pass",
+      "evidence": "cell 11 live P1 rerun diff 0.0e+00; cell 13 GD from zeros reproduces p1.weights (gap 0); p2.feature_names[:36]==p1.feature_names; p2.init_loss == p1.train_loss_final (diff 0.0); init_weights_source 'p1'"
+    },
+    {
+      "id": "R7",
+      "requirement": "P1 GD from scratch, configurable lr, convergence",
+      "status": "pass",
+      "evidence": "cells 12-16: lr 0.5064 = 0.5*2/lambda_max, sweep 0.001..1.05 (max_iter, converged, diverged), oracle diff 5e-6; src/phases/p1.py no sklearn"
+    },
+    {
+      "id": "J-P1-REPR",
+      "requirement": "Justification: feature prep/encoding (hr, season, weathersit, dteday)",
+      "status": "pass",
+      "evidence": "cell 10 'Justification: representation' with own numbers (0.260/0.729/0.736, cond 45.5)"
+    },
+    {
+      "id": "J-P1-LR",
+      "requirement": "Justification: learning rate and stopping rule",
+      "status": "pass",
+      "evidence": "cell 14 with lambda_max 1.9749, bound 1.0127, sweep iterations 2499/496/273/93"
+    },
+    {
+      "id": "J-P1-INIT",
+      "requirement": "Justification: weight init (P1 zeros, P2 lift)",
+      "status": "pass",
+      "evidence": "cell 14 'Start' (zeros); cell 27 'Justification: initialisation from Phase 1'"
+    },
+    {
+      "id": "R8",
+      "requirement": "P2 own GD from P1 weights; expanded features, degree justified",
+      "status": "pass",
+      "evidence": "cells 28-31: init loss 0.373581198 equal; degree 3 by plateau rule (0.9045/0.9144/0.9180/0.9180); powers of temp only; wd x hr ablation 0.7499"
+    },
+    {
+      "id": "R9",
+      "requirement": "P3 empirical diagnosis, chronological comparison, trust, target",
+      "status": "pass",
+      "evidence": "cells 39-48: ladder 11 levels x 3 validators, learning curves, gaps leakage -0.0002/drift 0.024, diagnosis under-fit, target C6 (282)"
+    },
+    {
+      "id": "J-P3-CUT",
+      "requirement": "Justification: chronological cut",
+      "status": "pass",
+      "evidence": "cell 42 'Justification: the chronological cut' (2012-07-01, 8151/2735)"
+    },
+    {
+      "id": "R10-methods",
+      "requirement": "P4 L1, L2, ENet implemented and compared",
+      "status": "pass",
+      "evidence": "cells 55-59, 66: p4.methods l1/l2/enet, paired bootstrap p4.comparisons, CV vs validation picks; stage B tied, recommended l1"
+    },
+    {
+      "id": "R10-verdicts",
+      "requirement": "P4 verdict with numbers for every original column",
+      "status": "pass",
+      "evidence": "cell 62 and report section 5 table: 14 columns (instant, dteday, season, yr, mnth, hr, holiday, weekday, workingday, weathersit, temp, atemp, hum, windspeed) each with drop_alone, solo_r2, lasso freq, carried_by"
+    },
+    {
+      "id": "J-P4-LAMBDA",
+      "requirement": "Justification: lambda range and choice",
+      "status": "pass",
+      "evidence": "cells 52 and 58; grid floor read as 'no penalty' disclosed"
+    },
+    {
+      "id": "R11-label",
+      "requirement": "P5 label from cnt, global-threshold flaw fixed, thresholds from train",
+      "status": "pass",
+      "evidence": "cells 70-73: 96 cells yr x workingday x hr, p5.threshold_rule.fitted_on 'train', min_cell_n 50; foils AUC hour-only 0.855/0.533/0.501"
+    },
+    {
+      "id": "R11-features",
+      "requirement": "P5 uses only P4 survivors",
+      "status": "pass",
+      "evidence": "cell 71 assert: 277 features, all in p4.survivors_expanded"
+    },
+    {
+      "id": "J-P5-THR",
+      "requirement": "Justification: classifier threshold",
+      "status": "pass",
+      "evidence": "cell 78: 0.25 from 3:1 cost; empirical min 0.2 (p5.t_cost_empirical), calibration gap 0.091"
+    },
+    {
+      "id": "R13-P5",
+      "requirement": "P5 accuracy, F1, ROC-AUC on validation",
+      "status": "pass",
+      "evidence": "cell 77: acc 0.784, F1 0.659, ROC-AUC 0.885 at 0.25; also 0.5 and F1-optimal"
+    },
+    {
+      "id": "R11-retro",
+      "requirement": "Pipeline retrospective tying five phases",
+      "status": "pass",
+      "evidence": "cells 81-82 'Pipeline retrospective' from p5.retrospective; report section 7 table"
+    },
+    {
+      "id": "R12",
+      "requirement": "Bonus asymmetric loss, gradient derived, shift shown",
+      "status": "pass",
+      "evidence": "cell 22 gradient formula + check 4.7e-9; cell 23 under-share 0.50 -> 0.31, k=1 control; report section 2 derivation"
+    },
+    {
+      "id": "R13",
+      "requirement": "R2 + RMSE on validation P1-P4",
+      "status": "pass",
+      "evidence": "p1 0.7361/94.7, p2 0.9178/52.8, p3 target 0.9413/44.7, p4 0.9413/44.7 (cells 16, 31, 43, 66)"
+    },
+    {
+      "id": "R3-H9",
+      "requirement": "Expectation before results, Outcome last, surprises",
+      "status": "pass",
+      "evidence": "git: first Expectation commits 2ef385f/133ca8a/b5114d4 precede first artifacts 165baa8/fbfd05f/ef4612d; second-pass Expectations 3f64bce (10-08 16:41) precede power-target artifacts 2d988eb (17:25); expectation_check byte-identical; each phase starts with Expectation and ends with Outcome containing 'What surprised us'"
+    },
+    {
+      "id": "PLOTS",
+      "requirement": "Plots have labelled axes and legends",
+      "status": "pass",
+      "evidence": "src/plots*.py use style.new_axes/label_axes(title, xlabel, ylabel) and style.legend or end labels; report figures 1a-2b inspected: axes and legends present"
+    },
+    {
+      "id": "R14",
+      "requirement": "1.11c submission: instant,cnt, 574 rows, test order, recommended model",
+      "status": "pass",
+      "evidence": "sample_submission.csv 574x2, instant equals data/test.csv order, no NaN/negative (min 0.94); p6.model == p4.recommended (l1, lambda 1.696e-4); model_a_gap_to_p4 0.0"
+    },
+    {
+      "id": "R15-nb",
+      "requirement": "1.11a notebook runs top to bottom",
+      "status": "pass",
+      "evidence": "verify_v3.log build_nb executed=True errors=0; no error outputs in 89 cells"
+    },
+    {
+      "id": "R15-pages",
+      "requirement": "1.11b report <= 6 pages, own numbers per phase, layout",
+      "status": "pass",
+      "evidence": "report/report.pdf 5 pages viewed; every phase's open choices with own numbers; tables and figures intact; number_trace 0 untraced (applies to report/report.pdf, not the stale root copy)"
+    },
+    {
+      "id": "H1",
+      "requirement": "seed and splits",
+      "status": "pass",
+      "evidence": "see R4-seed, R4-split"
+    },
+    {
+      "id": "H2",
+      "requirement": "fits on train only",
+      "status": "pass",
+      "evidence": "leak_scan 0 findings; scaler/fill/thresholds fitted on training rows (p1.scaler, p5.threshold_rule.fitted_on)"
+    },
+    {
+      "id": "H3",
+      "requirement": "no external data",
+      "status": "pass",
+      "evidence": "no network modules in src; only data/*.csv via load_train/load_test"
+    },
+    {
+      "id": "H4",
+      "requirement": "P1-P2 own GD, no sklearn fit/predict",
+      "status": "pass",
+      "evidence": "src/phases/p1.py, p2.py mention sklearn only in comments; sklearn imported only for train_test_split in src/common.py"
+    },
+    {
+      "id": "H5",
+      "requirement": "hash-chained artifacts",
+      "status": "pass",
+      "evidence": "see R2-chain"
+    },
+    {
+      "id": "H6",
+      "requirement": "L1, L2, ENet compared",
+      "status": "pass",
+      "evidence": "see R10-methods"
+    },
+    {
+      "id": "H7",
+      "requirement": "P5 on survivors, label from cnt, thresholds from train",
+      "status": "pass",
+      "evidence": "see R11-label, R11-features"
+    },
+    {
+      "id": "H8",
+      "requirement": "submission from recommended model",
+      "status": "pass",
+      "evidence": "see R14"
+    },
+    {
+      "id": "H10",
+      "requirement": "notebook runs; report <= 6 pages; numbers traced",
+      "status": "pass",
+      "evidence": "see R15-nb, R15-pages (root report.pdf stale: D-REPORT-ROOT)"
+    },
+    {
+      "id": "H11",
+      "requirement": "no tuning on test; never split/shuffle it",
+      "status": "pass",
+      "evidence": "load_test used only in src/predict.py and P6 cells 85-86; nothing tuned in P6"
+    },
+    {
+      "id": "H13",
+      "requirement": "diagnostic models only in exp/",
+      "status": "pass",
+      "evidence": "no import of exp from src, nb or run.py; tree model quoted only as diagnostic"
+    }
+  ]
+}

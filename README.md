@@ -17,9 +17,9 @@ the numeric artifact of the phase before it.
 
 | File | What it is |
 |---|---|
-| [rush_hour.ipynb](rush_hour.ipynb) | The executed notebook: all five phases, each opening with an **Expectation** cell and closing with an **Outcome** cell. It is self-contained: its setup cell carries `src/`, `config.yaml` and the stored artifacts, so on Google Colab only the notebook, `train.csv` and `test.csv` need to be uploaded |
-| [report.pdf](report.pdf) | The report (5 pages), every number read from the artifact files |
-| [sample_submission.csv](sample_submission.csv) | Predictions for `data/test.csv` (574 rows, same order) |
+| [rush_hour.ipynb](rush_hour.ipynb) | The executed notebook, built from `nb/`: a configuration cell, then each phase with its Expectation, code and Outcome cells. It is self-contained, so on Google Colab only the notebook, `train.csv` and `test.csv` need to be uploaded |
+| [report.pdf](report.pdf) | The report (at most 6 pages), every number read from the artifact files |
+| [sample_submission.csv](sample_submission.csv) | Predictions for `data/test.csv`, one row per test row in the same order. Upload this file from the repository root; `data/sample_submission.csv` is the empty template that came with the brief |
 | [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) | Rehearsal guide for the live evaluation: formulas, change-and-re-run drills, likely questions |
 
 ## Results
@@ -53,18 +53,18 @@ Requirements: Python (built and tested on 3.14) with `numpy`, `pandas`, `scikit-
 pip install numpy pandas scikit-learn matplotlib pyyaml threadpoolctl nbformat nbclient ipykernel markdown-it-py pytest ruff
 ```
 
-Everything runs through `run.py` from the repository root (it replaces the kit's `Makefile`, so no `make` is needed):
+Everything runs through `run.py` from the repository root. `run.py` is authoritative; the kit's `Makefile` is kept only for reference and may lag behind it, so no `make` is needed:
 
 | Command | What it does | Time |
 |---|---|---|
-| `python run.py all` | rebuild `artifacts/p1.json … p5.json`; a phase rebuilds when anything upstream changed | about 40 min (Phase 4 is about 30) |
+| `python run.py all` | rebuild `artifacts/p1.json … p5.json`; a phase rebuilds when anything upstream changed | Phase 4 about 30 minutes, the rest minutes |
 | `python run.py p1` … `p5` | rebuild one phase | seconds, except Phase 4 |
 | `python -m src.bonus_control` | the k = 1 control for the asymmetric-cost bonus | seconds |
 | `python run.py submission` | refit the recommended model and write `sample_submission.csv` | seconds |
-| `python run.py nb` | assemble `nb/p*.py` into `rush_hour.ipynb` and execute it | about 1 min with stored Phase 4/5 artifacts |
+| `python run.py nb` | assemble `nb/p*.py` into `rush_hour.ipynb` and execute it | |
 | `python run.py report` | render the report template and build the PDF | seconds |
 | `python run.py verify-fast` | lint, tests, leak scan, chain check, traceability counts | seconds |
-| `python run.py verify` | all of the above plus notebook run, submission check, report number trace | about 2 min |
+| `python run.py verify` | all of the above plus notebook run, submission check, report number trace | |
 
 The notebook imports the modules in `src/`. Inside the repository it uses the files that are there; anywhere else
 (for example Google Colab) its setup cell unpacks its own copy of `src/`, `config.yaml` and `artifacts/` and asks for
@@ -108,7 +108,7 @@ src/                   the implementation
 nb/                    notebook cells as plain percent-format files, one per phase
 artifacts/             p1.json … p6.json, the numeric hand-overs between phases
 report/                report template with {{artifact.key}} placeholders, figure and PDF builders
-tests/                 256 tests: gradient checks, oracle comparisons, leakage and determinism tests
+tests/                 unit tests: gradient checks, oracle comparisons, leakage and determinism tests
 tools/                 checkers: leak_scan, chain_check, submission_check, number_trace, build_nb, …
 docs/                  SPEC, ARCHITECTURE, DATA_CARD, decision records (adr/), TRACE.csv, WALKTHROUGH
 reports/               verification gates, the analyst's audit, the independent final audit
@@ -142,4 +142,3 @@ and wrote the prose, and sub-agents wrote code, tests and audits from the specs 
 - The data contains no zero-demand hours, so the model has never seen one.
 - Phase 4 takes about 30 minutes, so changing an early setting is slow to propagate; see the drills in
   [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) for quicker demonstrations.
-- About 35 lint warnings remain, mostly in the kit's `tools/`.

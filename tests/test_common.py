@@ -260,3 +260,24 @@ def test_load_test_leaves_unmodified_by_split(cfg, train_all):
     n0, cols0 = len(test_df), list(test_df.columns)
     common.seeded_split(train_all, 1)
     assert len(test_df) == n0 and list(test_df.columns) == cols0
+
+
+def test_predict_factor_cap_and_clip():
+    t = common.Target(0.1, "ls")
+    cnt = np.array([0.0, 5.0, 40.0, 977.0])
+    eta_fit = t.forward(cnt) + 0.05
+    eta_new = np.array([-50.0, 3.0, t.eta_cap(cnt) + 10.0])
+    s, fit, new = t.predict(eta_fit, cnt, eta_new)
+    assert s == t.factor(eta_fit, cnt)
+    assert np.array_equal(fit, t.to_bikes(eta_fit, s))
+    assert new[0] == 0.0                                             # clipped at zero
+    assert new[2] == t.to_bikes(np.array([t.eta_cap(cnt)]), s)[0]    # the huge eta was capped
+    _, _, raw = t.predict(eta_fit, cnt, eta_new, clip=False)
+    assert raw[0] < 0.0 and raw[1] == new[1]
+
+
+def test_timed_records_and_prints(capsys):
+    store = {}
+    with common.timed("step", store, "px"):
+        pass
+    assert "step" in store and "[px] step:" in capsys.readouterr().out

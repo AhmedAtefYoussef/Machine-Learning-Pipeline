@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -202,6 +204,20 @@ class Target:
             return float(np.log1p(top) + 1.0)
         return float(self.forward(np.e * (top + 1.0) - 1.0))
 
+    def capped(self, eta: np.ndarray, cnt_train: np.ndarray, cap: float | None = None) -> np.ndarray:
+        """eta held at or below `cap` (default: eta_cap of the fitting rows) so that q(eta) stays finite."""
+        return np.minimum(eta, self.eta_cap(cnt_train) if cap is None else cap)
+
+    def predict(self, eta_fit: np.ndarray, cnt_fit: np.ndarray, eta_new: np.ndarray,
+                clip: bool = True) -> tuple[float, np.ndarray, np.ndarray]:
+        """(s, fitting-row bikes, new-row bikes) from linear-scale predictions: the one place eta becomes bikes.
+
+        s comes from the fitting rows only; eta_new is capped (an over-flexible fit can extrapolate to absurd eta).
+        clip=False keeps negative counts, for callers that count them."""
+        s = self.factor(eta_fit, cnt_fit)
+        convert = self.to_bikes if clip else self.bikes_unclipped
+        return s, convert(eta_fit, s), convert(self.capped(eta_new, cnt_fit), s)
+
     def to_dict(self) -> dict:
         """The keys of the Phase 1 artifact that describe the target (read back by `from_artifact`)."""
         return {"target_transform": "power", "target_power": self.power,
@@ -266,6 +282,17 @@ def paired_bootstrap_delta_r2(y: np.ndarray, yhat_a: np.ndarray, yhat_b: np.ndar
     deltas = _bootstrap_r2_values(y, a, idx) - _bootstrap_r2_values(y, b, idx)
     lo, hi = np.percentile(deltas, [2.5, 97.5])
     return float(r2(y, a) - r2(y, b)), float(lo), float(hi)
+
+
+# ----------------------------------------------------------------------------- timing
+
+@contextmanager
+def timed(step: str, timings: dict[str, float], tag: str):
+    """Record the wall-clock seconds of one step in `timings` and print them as '[tag] step: x s'."""
+    start = time.perf_counter()
+    yield
+    timings[step] = time.perf_counter() - start
+    print(f"[{tag}] {step}: {timings[step]:.1f} s")
 
 
 # ----------------------------------------------------------------------------- artifacts

@@ -12,4 +12,6 @@
 | K8 | Quiet hours missing from the data (cnt ≥ 1) | stated as a limitation; clip at 0 only | chief |
 | K9 | Environment: no make/pandoc, cp1252 console, OneDrive path | run.py, -X utf8, headless Chrome for the PDF, no worktrees | chief |
 | K10 | Team IDs taken from session notes | closed: confirmed by the user on 2026-10-07 | user |
+| K12 | Day-sampling spread of the hidden-test R2: the test is only 24 days, and days, not rows, are the sampling unit | quote it: 24-day samples of out-of-fold predictions give a 95% range of about 0.91-0.97 (sd 0.0147; audit C section 9); the day-block interval is wider than the row interval (diagnostics.json) | chief |
+| K13 | Disclosed remaining gap: growth differs by part of year (2.2x Jan-Apr vs 1.5x later); year x season-of-year harmonics gain about +0.004 on held-out days | rejected because it collapses the chronological estimate (-0.34), which the pre-registered rule of ADR-018 forbids; disclosed in the report, not used | chief |
 | K11 | Live defence: code nobody can explain | short functions, config cell, WALKTHROUGH drills | steward / scribe |

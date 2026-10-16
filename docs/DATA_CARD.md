@@ -3,15 +3,18 @@
 ## Files and time structure
 - train.csv 10,886 x 15, test.csv 574 x 14, no NaN, `instant` unique, no instant shared between the files (train max 17093, test 432..17117).
 - train = days 1-19 of every month, Jan 2011 - Dec 2012: 456 days, 42 of them with fewer than 24 rows. test = the 20th of each month: 24 days (22 with 24 rows, 2 with 23). The hidden test is whole unseen days interleaved through the timeline, not a future block.
+- Every test day's previous day (the 19th) is in train for all 24 test days (artifacts/diagnostics.json `test_coverage`); the 21st is in neither file. The hidden test is interpolation at the edge of each 19-day block.
+- Missing hours: 58 of 456 x 24 in train, 91% of them at 0-6h. One real outage: 2011-01-18 hours 0-11 (12 h; the day's total is 0.48 x its month/day-type median); every other gap is at most 2 h, at 2-5h. Test misses 2 quiet hours.
+- Holidays: test holds 2012-02-20, Presidents' Day, a holiday type never seen in train (23 rows, 4% of test).
 - Fewest rows at hours 3 (433), 4 (442), 2 (448) of 456 days; cnt >= 1 always (0 zeros). Quiet hours are absent, not recorded as 0.
 - weekday: 0 = Sunday ... 6 = Saturday. season = calendar quarter of mnth (1 = Jan-Mar). 13 holiday dates in train (311 rows), mostly Mondays; one holiday date in test (2012-02-20, 23 rows).
 
 ## Seeded split
-8708 train / 2178 validation rows; mean cnt 191.6 / 191.4. Every validation row has same-day rows in the training portion (100%).
+8708 train / 2178 validation rows; mean cnt 191.6 / 191.4. Every validation row has same-day rows in the training portion (100%, diagnostics.json `share_val_rows_sharing_a_day_with_train`; 95.6% also have the adjacent hour in train). A day-block bootstrap interval of validation R2 is 1.15 x as wide as the row bootstrap (`val_r2_interval_row_vs_day_block`).
 Chronological cut 2012-07-01: about 75% / 25% of train.csv.
 
 ## Target
-cnt mean 191.6, median 145, sd 181.1, skew 1.24, min 1, max 977; quantiles 75% 284, 90% 452, 99% 774. 2011 mean 144.2, 2012 mean 238.6 (ratio 1.654).
+cnt mean 191.6, median 145, sd 181.1, skew 1.24, min 1, max 977; quantiles 75% 284, 90% 452, 99% 774. 2011 mean 144.2, 2012 mean 238.6 (ratio 1.654). Growth is not constant: the 2012/2011 monthly ratio is about 2.2 in Jan-Apr (1.98-2.40) and about 1.5 from May on (1.31-1.68), so a linear trend with annual harmonics over-predicts early 2011 and under-predicts early 2012 by 5-18% (audit C section 8).
 
 ## Demand structure
 - Working days: peaks at 17h (529), 18h (495), 8h (480). Non-working days: midday hump 12-14h (379-388).
@@ -21,7 +24,7 @@ cnt mean 191.6, median 145, sd 181.1, skew 1.24, min 1, max 977; quantiles 75% 2
 r(temp, atemp) 0.985; r(season, mnth) 0.972 (exact function); workingday = (weekday in 1..5) and not holiday, 0 exceptions; r(instant, days since start) 0.99999; r(yr, days) 0.867.
 
 ## Quirks
-hum = 0: 22 rows, all 2011-03-10. windspeed = 0: 12.1% of train, 17.8% of test; 28 distinct wind levels. |atemp - temp| > 0.2: 24 rows, all 2012-08-17 (train only).
+hum = 0: 22 rows, all 2011-03-10, a rain day (20 of the 22 rows are weathersit 3); the median fill (0.62) treats it as dry, while rainy hours have median hum 0.87 (train-only rows, 0.2%). windspeed = 0: 12.1% of train, 17.8% of test; 28 distinct wind levels. |atemp - temp| > 0.2: 24 rows, all 2012-08-17 (train only).
 
 ## Calibration from exp/eda0 (closed-form fits; bug detectors, NOT results to quote)
 Bike-scale R2, log1p target, no back-transform factor, trend + 2 harmonics:

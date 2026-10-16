@@ -9,58 +9,24 @@ Only numpy, pandas and our own src modules are used here (no sklearn in this fil
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 
-from src.common import (Target, bootstrap_r2, config_seed, load_config, load_train, r2, read_artifact, rmse,
-                        seeded_split, set_threads, valid_back_methods, write_artifact)
-from src.features import BASE, Design, DesignSpec
-from src.gd import gradient_check, gradient_descent, lambda_max, mse_grad, mse_loss
+from src.common import (Target, bootstrap_r2, load_config, r2, read_artifact, rmse, set_threads, valid_back_methods,
+                        write_artifact)
+from src.features import Design
+from src.gd import gradient_check, lambda_max, mse_grad, mse_loss, run_gd
 from src.gd_asym import asym_grad, asym_loss, fit_asymmetric, operator_costs
+from src.validation import (Split, base_design, bike_predictions, config_target, curve_points, make_split,
+                            model_scores, oracle_gap, residual_profile)
 
-N_RESIDUAL_BINS = 10      # equal-count bins of temp / hum in the residual profile (a report choice, not a tuning knob)
 HOUR_HARMONICS = 6        # sin/cos pairs k = 1..6 for the harmonic hour encoding (6 pairs span all 24 hours)
 HOURS_PER_DAY = 24
 SWEEP_CURVE_POINTS = 200  # points kept per lr-sweep curve
 MAIN_CURVE_POINTS = 300   # points kept of the main loss curve
 CONSTANT_STD = 1e-12      # a column with a smaller train std is treated as constant (std set to 1)
-
-
-# ----------------------------------------------------------------------------- data
-
-@dataclass
-class Split:
-    """Seeded train/validation frames with the target on both scales."""
-    seed: int
-    train_df: pd.DataFrame
-    val_df: pd.DataFrame
-    cnt_tr: np.ndarray   # bikes, train
-    cnt_va: np.ndarray   # bikes, validation
-    z_tr: np.ndarray     # target.forward(bikes), train
-    z_va: np.ndarray     # target.forward(bikes), validation
-
-
-def config_target(cfg: dict) -> Target:
-    """The target named in config.yaml; the back-transform method is not needed to form z, so it is left at 'none'."""
-    return Target(float(cfg["p1"]["target_power"]), "none")
-
-
-def make_split(cfg: dict, target: Target | None = None) -> Split:
-    """The single seeded split of the repo, with the target on the bike scale and on the z scale of `target`."""
-    target = config_target(cfg) if target is None else target
-    seed = config_seed(cfg)
-    train_df, val_df = seeded_split(load_train(cfg), seed, cfg["split"]["test_size"])
-    cnt_tr = train_df["cnt"].to_numpy(dtype=np.float64)
-    cnt_va = val_df["cnt"].to_numpy(dtype=np.float64)
-    return Split(seed, train_df, val_df, cnt_tr, cnt_va, target.forward(cnt_tr), target.forward(cnt_va))
-
-
-def base_design(split: Split) -> tuple[Design, np.ndarray, np.ndarray]:
-    """The 35-column base design (plus bias) fitted on train only; returns (design, X_train, X_validation)."""
-    design = Design(DesignSpec(base=BASE)).fit(split.train_df)
-    return design, design.transform(split.train_df), design.transform(split.val_df)
 
 
 # ----------------------------------------------------------------------------- gradient descent steps
@@ -70,22 +36,6 @@ def learning_rate(X: np.ndarray, fraction: float) -> tuple[float, float, float]:
     lam = lambda_max(X)
     bound = 2.0 / lam
     return lam, bound, fraction * bound
-
-
-def run_gd(X, z, w0, lr, tol_loss, tol_grad, max_iter):
-    """Gradient descent on the MSE loss 1/(2n)||Xw - z||^2 from w0 (our own gd.gradient_descent)."""
-    return gradient_descent(lambda w: mse_loss(X, z, w), lambda w: mse_grad(X, z, w), w0, lr,
-                            tol_loss=tol_loss, tol_grad=tol_grad, max_iter=max_iter, record_every=1)
-
-
-def curve_points(history, max_points: int) -> list:
-    """[[iteration, loss], ...] with at most max_points points; cut after the first non-finite loss (stored as null)."""
-    losses = np.asarray(history, dtype=np.float64)
-    finite = np.isfinite(losses)
-    if not finite.all():
-        losses = losses[: int(np.argmin(finite)) + 1]
-    picks = np.unique(np.linspace(0, len(losses) - 1, min(max_points, len(losses))).round().astype(int))
-    return [[int(i), float(losses[i]) if np.isfinite(losses[i]) else None] for i in picks]
 
 
 def _finite_or_none(value: float):
@@ -121,13 +71,6 @@ def gradient_check_errors(X, z, seed: int) -> dict:
 
 # ----------------------------------------------------------------------------- back-transform and scores
 
-def bike_predictions(split: Split, X_tr, X_va, w, target: Target) -> tuple[float, np.ndarray, np.ndarray]:
-    """(factor, train bikes, validation bikes): s * q(eta) - 1 with s from the train residuals only."""
-    eta_tr, eta_va = X_tr @ w, X_va @ w
-    factor = target.factor(eta_tr, split.cnt_tr)
-    return factor, target.to_bikes(eta_tr, factor), target.to_bikes(eta_va, factor)
-
-
 def backtransform_table(split: Split, X_tr, X_va, w, target: Target, methods) -> dict:
     """Validation score of every back-transform candidate valid for this exponent; the best val R2 wins
     (ties go to the first in the list)."""
@@ -143,46 +86,6 @@ def backtransform_table(split: Split, X_tr, X_va, w, target: Target, methods) ->
         if candidates[method]["val_r2"] > candidates[best]["val_r2"]:
             best = method
     return {"method": best, "factor": candidates[best]["factor"], "candidates": candidates}
-
-
-def model_scores(split: Split, X_tr, X_va, w, target: Target) -> dict:
-    """Train/validation R2 and RMSE on the bike scale, R2 on the z scale, and the factor used."""
-    factor, pred_tr, pred_va = bike_predictions(split, X_tr, X_va, w, target)
-    return {"factor": factor,
-            "train_r2": r2(split.cnt_tr, pred_tr), "train_rmse": rmse(split.cnt_tr, pred_tr),
-            "val_r2": r2(split.cnt_va, pred_va), "val_rmse": rmse(split.cnt_va, pred_va),
-            "train_r2_log": r2(split.z_tr, X_tr @ w), "val_r2_log": r2(split.z_va, X_va @ w)}
-
-
-def oracle_gap(split: Split, X_tr, X_va, w, target: Target) -> dict:
-    """Closed-form least squares (test oracle only, never used for fitting) against our GD weights."""
-    w_exact = np.linalg.lstsq(X_tr, split.z_tr, rcond=None)[0]
-    scores_gd = model_scores(split, X_tr, X_va, w, target)
-    scores_exact = model_scores(split, X_tr, X_va, w_exact, target)
-    return {"label": "oracle: np.linalg.lstsq, used only to check GD",
-            "max_abs_weight_diff": float(np.max(np.abs(w - w_exact))),
-            "loss_gap": mse_loss(X_tr, split.z_tr, w) - mse_loss(X_tr, split.z_tr, w_exact),
-            "val_r2_diff": scores_gd["val_r2"] - scores_exact["val_r2"]}
-
-
-# ----------------------------------------------------------------------------- residual profile
-
-def _equal_count_bins(values: np.ndarray, resid: np.ndarray, n_bins: int) -> list:
-    """Equal-count bins of `values` (sorted, split into n_bins runs) with the mean residual of each."""
-    parts = np.array_split(np.argsort(values, kind="stable"), n_bins)
-    return [{"lo": float(values[p].min()), "hi": float(values[p].max()),
-             "mean_resid": float(resid[p].mean()), "n": int(len(p))} for p in parts]
-
-
-def residual_profile(df: pd.DataFrame, resid: np.ndarray) -> dict:
-    """Mean z-scale residual by (workingday, hour) cell and by 10 equal-count temp and hum bins."""
-    table = pd.DataFrame({"workingday": df["workingday"].to_numpy(), "hr": df["hr"].to_numpy(), "r": resid})
-    cells = table.groupby(["workingday", "hr"])["r"].agg(["mean", "size"]).reset_index()
-    by_wd_hr = [{"workingday": int(row.workingday), "hr": int(row.hr), "mean_resid": float(row["mean"]),
-                 "n": int(row["size"])} for _, row in cells.iterrows()]
-    return {"by_wd_hr": by_wd_hr,
-            "by_temp_bin": _equal_count_bins(df["temp"].to_numpy(dtype=np.float64), resid, N_RESIDUAL_BINS),
-            "by_hum_bin": _equal_count_bins(df["hum"].to_numpy(dtype=np.float64), resid, N_RESIDUAL_BINS)}
 
 
 # ----------------------------------------------------------------------------- hour-encoding ablation
@@ -282,8 +185,9 @@ def asymmetric_bonus(split: Split, X_tr, X_va, w_mse, target: Target, cfg: dict)
 
 # ----------------------------------------------------------------------------- orchestration
 
-def run(cfg: dict | None = None) -> dict:
-    """Run Phase 1, write artifacts/p1.json and return the artifact as read back from disk."""
+def run(cfg: dict | None = None, write: bool = True) -> dict:
+    """Run Phase 1. With write=True store artifacts/p1.json and return it as read back from disk; with
+    write=False touch no file and return the payload (the notebook's live mode)."""
     cfg = cfg if cfg is not None else load_config()
     set_threads(cfg["threads"])
     p1 = cfg["p1"]
@@ -332,6 +236,8 @@ def run(cfg: dict | None = None) -> dict:
         "bonus": bonus,
         "n_train": len(split.train_df), "n_val": len(split.val_df), "n_features": X_tr.shape[1],
     }
+    if not write:
+        return payload
     write_artifact("p1", payload, upstream=None, cfg=cfg)
     return read_artifact("p1")
 

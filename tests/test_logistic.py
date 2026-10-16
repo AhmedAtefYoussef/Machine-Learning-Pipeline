@@ -56,8 +56,12 @@ def test_logloss_extreme_scores_finite():
 def test_gradient_check(l2):
     X, y = make_data(200, 6, 1)
     w = np.random.default_rng(2).normal(size=6) * 0.5
-    loss = lambda v: lg.logloss(X, y, v, l2)
-    grad = lambda v: lg.logloss_grad(X, y, v, l2)
+    def loss(v):
+        return lg.logloss(X, y, v, l2)
+
+    def grad(v):
+        return lg.logloss_grad(X, y, v, l2)
+
     assert gd.gradient_check(loss, grad, w, n_coords=6, eps=1e-6, seed=0) < 1e-6
     # independent finite differences
     g = grad(w)

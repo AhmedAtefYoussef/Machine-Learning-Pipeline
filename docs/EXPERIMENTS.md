@@ -61,3 +61,17 @@ decision: reject (below the two-standard-error rule)     adr: 018
 result: regression tree model with Poisson loss: 0.966 seeded / 0.950 held-out days / 0.902 chrono. Classifier tree model: ROC-AUC 0.901 on the Phase 5 label (logistic 0.886).
 decision: stop condition (b): the linear chain with lam 0.1 is within about 0.004 of the ceiling on held-out days     adr: 018
 
+
+# EXP-C1 Dataset audit probes: OOF residual structure, day-of-month hold-outs, lead weather (exp/audit_c/probe.py, probe3.py -> probe.json, probe3.json; analyst)
+hypothesis: the weather of the next hours explains part of the rain-hour error; day-clustered intervals are wider than the row bootstrap      category: validation | modeling
+config_sha: 511e39518d9b               compliance: yes (diagnostic, fit rows only, test.csv not opened); lead weather looks ahead (doubtful, as whole-day weather in EXP-A3)      looks at seeded validation: 3
+expected_gain: lead weather +0.002 on held-out days, >= 0 chrono; noise: paired fold se about 0.0005   cost: 10 s   risk: low
+result: lead weather +0.0008 held-out days (se 0.0003, 4/5), day-19 hold-out -0.004, chrono -0.0005. OOF interval width: row bootstrap 0.0078, day-cluster 0.0129; 24-day sample sd 0.0147. Day level = 22% of OOF squared error. Year-month obs/pred 0.82-1.13.
+decision: reject lead weather; recommend day-cluster intervals (documentation)     adr: -
+
+# EXP-C2 Year-specific seasonality on the test-mimicking validator (exp/audit_c/probe2.py -> probe2.json; analyst)
+hypothesis: growth differs by month (2012/2011 about 2.2x Jan-Apr, 1.5x after); year x doy harmonics or year-month levels remove the 5-18% year-month bias      category: modeling
+config_sha: acfdd3e364ab               compliance: yes (inputs only, H1-H13); conflicts with the ADR-018 chrono non-inferiority rule      looks at seeded validation: 3
+expected_gain: +0.003 to +0.005 on held-out days and day-of-month hold-outs, strongly negative chrono (unidentifiable); noise: paired se 0.0006   cost: 20 s   risk: high (rule change after results; P3-P6 rerun)
+result: yr x doy (4 cols): day-of-month hold-outs +0.0040 (se 0.0006, 19/19), held-out days +0.0035 (se 0.0005, 5/5), chrono -0.342. Year-month levels: +0.0032 (0.0008, 14/19), +0.0030 (0.0006, 5/5), chrono -0.054. Base day-of-month hold-outs mean 0.9447, sd 0.0135.
+decision: defer to chief; analyst recommends disclose, not adopt (0.3 sd of the hidden test's own day-sampling noise, deadline)     adr: -

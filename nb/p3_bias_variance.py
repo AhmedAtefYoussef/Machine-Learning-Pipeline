@@ -33,117 +33,102 @@
 # %% [markdown]
 # ### Justification: what we varied
 #
-# - **A ladder of nested designs, anchored at Phase 2.** Level C3 is exactly the Phase 2 design, read from `artifacts/p2.json`. Below it we remove what Phase 2 added (C2: no powers; C1: no interactions; C0: no hour at all). Above it we add blocks: weather effects that depend on the hour (C4), a separate hour profile for each weekday (C5), weather detail and weather memory (C6, see the note below), finer weather interactions (C7), hour-specific season and trend (C8), and finally month × hour and month × day type × hour (C9, C10), where many cells contain only a few training rows. Bias shows as "training and validation both low, both rise when we add a block"; variance shows as "training keeps rising, validation falls".
-# - **The degree alone**, from 1 to 8, with everything else as in Phase 2, because the task asks about the degree; we expected this axis to be flat.
-# - **The amount of training data** (10% to 100% of the training days) for the anchor, the target and the top level: more data cures variance but not bias.
-# - **Three ways of scoring** each design: the seeded validation set; five folds of whole held-out days inside the training portion (folds are fixed by the calendar, not by a random seed); and one chronological split.
-# - **How the sweeps are fitted.** These several hundred fits use the closed-form least-squares solution, which our gradient descent reaches to within 1e-5 in Phases 1 and 2 (the chain cell below checks it again on the anchor); the largest levels would need tens of thousands of iterations each. A tiny ridge term (1e-8) keeps the solution defined where columns are exact copies of each other (`holiday` is determined by the weekday dummies and `workingday`).
-# - **Note on level C6.** This level was not in our first ladder. After the first complete run we looked at where the C5 model's errors were (working-day rush hours and rainy hours carried about half and a fifth of the squared error) and added the terms that address them: squares and cubes of humidity, wind terms, a temperature effect per working-day hour, and the weather situation one hour earlier and the worst of the previous three hours (wet roads keep riders away after the rain has stopped). These last columns use the weather of neighbouring rows, never their counts. Because this level was designed after looking at validation errors, we judge it mainly by the two estimates that were not used to design it.
+# - **A nested ladder anchored at Phase 2.** Level C3 is exactly the Phase 2 design. Below it we remove what Phase 2 added (C2 has no powers, C1 no products, C0 no hour). Above it we add hour-dependent weather (C4), an hour profile per weekday (C5), weather detail and weather memory (C6), finer weather terms (C7), hour-specific season and trend (C8), and month × hour blocks (C9, C10). Bias shows as training and validation rising together when a block is added; variance as training rising while validation falls.
+# - **The degree alone**, from 1 to 8, because the brief asks about it, and **the amount of training data** for the anchor, the target and the top level.
+# - **Three scores per design:** the seeded validation set, five folds of held-out days fixed by the calendar, and the chronological split.
+# - **Closed form.** These several hundred fits use exact least squares, which our gradient descent matches on the anchor (asserted below). A tiny ridge term keeps the solution defined where columns are exact copies, such as `holiday`.
+# - **Level C6 came late.** We added it after the first complete run, from a residual analysis of C5 whose errors sat mostly in working-day rush hours and in rain: humidity powers, wind terms, a temperature effect per working-day hour, and the weather of the previous one and three hours (inputs only, never counts). It was designed after we had looked at all three validators, so none of its estimates is untouched.
 
 # %%
 # Phase 3 builds a ladder of designs on top of the Phase 2 artifact and scores each one three ways.
 from src import plots_p3
 from src.phases import p3 as p3mod
 
-p3 = phase("p3", p3mod.run, CFG, upstream="p2", live=True, recompute_all=RECOMPUTE_ALL)   # runs Phase 3 here and now (about 15 seconds)
+p3 = phase("p3", p3mod.run, CFG, RECOMPUTE_ALL, upstream="p2", live=True)   # about 15 seconds
 
 # %%
-# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit must reproduce its validation R².
-view.p3_chain(p2, p3)
+# The chain: the anchor is exactly the Phase 2 design, and our closed-form fit reproduces its validation R².
+anchor = p3["anchor"]
+assert (anchor["degree"], anchor["blocks"], anchor["power_cols"]) == (p2["degree"], p2["blocks"], p2["power_cols"])
+assert anchor["n_features"] == len(p2["feature_names"]), "the anchor is not the Phase 2 design"
+assert abs(anchor["p2_val_r2"] - p2["val_r2"]) < 1e-12 and abs(p3["anchor_check"]) < 1e-6, "the anchor does not reproduce Phase 2"
+print(f"anchor = Phase 2 design ({anchor['n_features']} weights); closed form minus gradient descent: {p3['anchor_check']:.1e}")
 
 # %%
-# The complexity ladder, with the three validators for every level (the highlighted row is the target level).
-view.p3_ladder(p3)
-
-# %%
-# The same ladder as a plot.
+# The complexity ladder with the three validators for every level (highlighted: the target level), and as a plot.
+ladder = pd.json_normalize(p3["ladder"])
+table(ladder[["name", "n_features", "seeded.train_r2", "seeded.r2", "day_block.r2", "chrono.r2"]],
+      f"Complexity ladder; over-fit from level {p3['overfit_from_level']}", ladder["name"] == p3["target_level"])
 show(plots_p3.plot_ladder(p3))
 
 # %%
 # The degree axis alone: anchor blocks and power columns fixed, only the degree changes.
-view.p3_degree_axis(p3)
-
-# %%
-# The degree axis as a plot.
-show(plots_p3.plot_degree_axis(p3))
+axis = pd.json_normalize(p3["degree_axis"])
+table(axis[["degree", "n_features", "seeded.r2", "day_block.r2", "chrono.r2"]], "Degree axis (validation R² by validator)")
 
 # %%
 # Learning curves for the anchor, the target and the top of the ladder.
-view.p3_learning_curves(p3)
-
-# %%
-# The learning curves as a plot.
 show(plots_p3.plot_learning_curves(p3))
 
 # %% [markdown]
 # ### Justification: the chronological cut
 #
-# We train on every date before {{p3.cut_date}} ({{p3.chrono_detail.anchor.n_early}} rows) and validate on every date from then on ({{p3.chrono_detail.anchor.n_late}} rows, about a quarter of the file). We put the cut there for three reasons: the held-out part is about the same size as our seeded validation set, so the two estimates are comparably precise; it covers half a seasonal cycle (summer to winter) instead of one season; and the training part still contains one full year plus the first half of the second, so the model has seen each month at least once. A later cut would test only autumn and winter; an earlier one would leave too little of 2012 to learn the growth from.
+# We train on dates before {{p3.cut_date}} ({{p3.chrono_detail.anchor.n_early}} rows) and validate on the rest ({{p3.chrono_detail.anchor.n_late}} rows). The held-out part is about as large as our seeded validation set, so the two estimates are comparably precise. It covers half a seasonal cycle, from summer to winter, and the training part still holds one full year plus half of the next, so every month is seen at least once. A later cut would test only autumn and winter; an earlier one would leave too little of 2012 to learn the growth from.
 
 # %%
 # The anchor and the target scored by the seeded split, held-out days and the chronological split, with their gaps.
-view.p3_estimates(p3)
-
-# %%
-# The same estimates as a plot.
-show(plots_p3.plot_three_estimates(p3))
+gaps = p3["gaps"]
+designs = [{"design": "anchor", **p3["estimates"], "gaps": gaps["anchor"]}, {"design": "target", **p3["estimates_target"], "gaps": gaps["target"]}]
+est = pd.json_normalize(designs)
+table(est[["design", "seeded.r2", "seeded.lo", "seeded.hi", "day_holdout.r2", "day_holdout.sd", "chrono.r2", "gaps.leakage", "gaps.drift"]],
+      "Three estimates (highlighted: the target)", est["design"] == "target")
 
 # %% [markdown]
 # ### Justification: which estimate to trust
 #
-# - **The gap has two possible causes, and we measured them separately.** Seeded versus held-out days isolates the effect of sharing days between training and validation: {{p3.gaps.anchor.leakage:.4f}} for the Phase 2 model and {{p3.gaps.target.leakage:.4f}} for the target (a negative number means held-out days score higher), both smaller than the spread between day folds ({{p3.estimates.day_holdout.sd:.3f}}). Held-out days versus chronological isolates what changes when the validation period lies in the future: {{p3.gaps.anchor.drift:.3f}} and {{p3.gaps.target.drift:.3f}}.
-# - **So what gap there is, is drift, not leakage.** In the late period the mean demand is {{p3.chrono_detail.anchor.mean_cnt_late:.0f}} bikes against {{p3.chrono_detail.anchor.mean_cnt_early:.0f}} before the cut, and the Phase 2 model's predictions there are {{p3.chrono_detail.anchor.mean_ratio:.2f}} times the true mean: a straight trend on the transformed scale still extrapolates growth too steeply. If we only correct that level (a diagnostic, not a usable score) R² rises to {{p3.chrono_detail.anchor.r2_level_corrected:.3f}}, so most of the gap is the level and the hourly shape still fits.
-# - **Which one to trust.** For data from new time periods, the chronological estimate ({{p3.estimates.chrono.r2:.3f}} for Phase 2, {{p3.estimates_target.chrono.r2:.3f}} for the target) is the honest one, and it is the number we would quote to an operator planning next year. The seeded number is the easiest to flatter. For our hidden test set specifically, which is the 20th of each month inside the two observed years, the held-out-day estimate is the closest match.
-# - **Does it change the diagnosis?** No in kind, yes in degree: see the Outcome.
+# - **Two causes, measured separately.** Seeded minus held-out days measures what sharing days between training and validation is worth: {{p3.gaps.anchor.leakage:.4f}} for Phase 2 and {{p3.gaps.target.leakage:.4f}} for the target, both smaller than the spread between day folds ({{p3.estimates.day_holdout.sd:.3f}}). Held-out days minus chronological measures drift: {{p3.gaps.anchor.drift:.3f}} and {{p3.gaps.target.drift:.3f}}.
+# - **So the gap is drift.** After the cut mean demand is {{p3.chrono_detail.anchor.mean_cnt_late:.0f}} bikes against {{p3.chrono_detail.anchor.mean_cnt_early:.0f}} before, and Phase 2 predicts {{p3.chrono_detail.anchor.mean_ratio:.2f}} times the true mean there. Correcting only that level, as a diagnostic, gives R² {{p3.chrono_detail.anchor.r2_level_corrected:.3f}}: the hourly shape still fits.
+# - **Which to trust.** The chronological estimate for future periods. For our hidden test, which lies inside the two observed years, held-out days are the closest match. The seeded number is the easiest to flatter.
 
 # %%
-# Chronological detail: the late period has a much higher level of demand (growth) than the early one.
-view.p3_chrono_detail(p3)
-
-# %%
-# How much variance is left once the design cells are fully known (an optimistic ceiling).
-view.p3_noise_floor(p3)
-
-# %%
-# The diagnosis, and the complexity we carry forward.
-view.p3_diagnosis(p3)
+# The diagnosis, and the complexity level we carry forward to Phase 4.
+level = p3["target_complexity"]
+table({**p3["diagnosis"], "target": level["level"], "target weights": level["n_features"], "target degree": level["degree"],
+       "target power columns": level["power_cols"], "target blocks": level["blocks"]}, "Diagnosis and target complexity")
 
 # %% [markdown]
 # ### Justification: exponent check
 #
-# Phase 1 fixed the exponent of the target transform at {{p3.target_power_used}} for the whole chain, on the strength of an earlier run. Here we test that decision on the design this phase selects: the table and plot below refit the target design for each candidate exponent. On validation the best is {{p3.target_power_best_seeded}}; the neighbours score {{p3.target_power_check.1.seeded_r2:.4f}} (0.05), {{p3.target_power_check.2.seeded_r2:.4f}} (0.1) and {{p3.target_power_check.3.seeded_r2:.4f}} (0.15), against {{p3.target_power_check.0.seeded_r2:.4f}} for the log and {{p3.target_power_check.6.seeded_r2:.4f}} for the square root. Held-out days agree ({{p3.target_power_check.0.day_block_r2:.4f}} for the log, {{p3.target_power_check.2.day_block_r2:.4f}} at 0.1). The chronological split would like a slightly larger exponent ({{p3.target_power_check.2.chrono_r2:.3f}} at 0.1, {{p3.target_power_check.3.chrono_r2:.3f}} at 0.15, {{p3.target_power_check.4.chrono_r2:.3f}} at 0.2) and dislikes the log most ({{p3.target_power_check.0.chrono_r2:.3f}}). Our consistency test is whether the exponent in use is within {{p3.plateau_tol}} validation R² of the best one: it is ({{p3.target_power_consistent}}), so the chain does not have to be restarted. We do not move to 0.15 for the chronological gain: the exponent is tuned on the validation set like every other choice, and 0.1 is the best there.
+# Phase 1 fixed λ = {{p3.target_power_used}} for the whole chain; here we test it on the target design. Validation prefers {{p3.target_power_best_seeded}}: {{p3.target_power_check.1.seeded_r2:.4f}} at {{p3.target_power_check.1.power}}, {{p3.target_power_check.2.seeded_r2:.4f}} at {{p3.target_power_check.2.power}}, {{p3.target_power_check.3.seeded_r2:.4f}} at {{p3.target_power_check.3.power}}, and {{p3.target_power_check.0.seeded_r2:.4f}} for the log. Held-out days agree. The chronological split would like a slightly larger exponent ({{p3.target_power_check.3.chrono_r2:.3f}} at {{p3.target_power_check.3.power}} against {{p3.target_power_check.2.chrono_r2:.3f}}). The exponent in use is within {{p3.plateau_tol}} of the best on validation ({{p3.target_power_consistent}}), so the chain stands. We do not move to the larger exponent, because every choice is tuned on the validation set.
 
 # %%
 # The target design in closed form under each candidate exponent (the chain itself uses the exponent from Phase 1).
-display(view.p3_exponents(p3))
-show(plots.plot_target_power(p1, p3))
+check = pd.DataFrame(p3["target_power_check"])
+table(check[["power", "seeded_r2", "day_block_r2", "chrono_r2"]], f"Target exponent on the target design (in use: {p3['target_power_used']}; "
+      f"within the plateau tolerance: {p3['target_power_consistent']})", np.isclose(check["power"], p3["target_power_used"]))
 
 # %% [markdown]
 # ### Justification: target complexity
 #
-# Rule: the simplest ladder level whose seeded validation R² is within {{p3.plateau_tol}} of the best level. It selects {{p3.target_complexity.level}} ({{p3.target_complexity.n_features}} weights): validation R² {{p3.ladder.6.seeded.r2:.4f}} against {{p3.ladder.5.seeded.r2:.4f}} one level below and {{p3.ladder.7.seeded.r2:.4f}} one level above. The other two estimates agree: held-out days {{p3.ladder.5.day_block.r2:.4f}} → {{p3.ladder.6.day_block.r2:.4f}} → {{p3.ladder.7.day_block.r2:.4f}}, chronological {{p3.ladder.5.chrono.r2:.3f}} → {{p3.ladder.6.chrono.r2:.3f}} → {{p3.ladder.7.chrono.r2:.3f}}.
-#
-# We have to be open about two things. First, our original rule was "the level with the highest validation R²". On the first ladder it picked a level 140 weights larger than its neighbour on a difference of 0.0005, which is not a rule we could defend, so we replaced it with the same "smallest within 0.001 of the best" rule we had already fixed for the degree in Phase 2. Second, level C6 itself was added after that first run (see the note above). Both changes are in the git history, and the rule still looks only at the seeded validation set.
+# Rule: the simplest ladder level whose validation R² is within {{p3.plateau_tol}} of the best level. It selects {{p3.target_complexity.level}} ({{p3.target_complexity.n_features}} weights): {{p3.ladder.6.seeded.r2:.4f}} against {{p3.ladder.5.seeded.r2:.4f}} one level below and {{p3.ladder.7.seeded.r2:.4f}} one level above. Held-out days ({{p3.ladder.5.day_block.r2:.4f}} → {{p3.ladder.6.day_block.r2:.4f}} → {{p3.ladder.7.day_block.r2:.4f}}) and the chronological split ({{p3.ladder.5.chrono.r2:.3f}} → {{p3.ladder.6.chrono.r2:.3f}} → {{p3.ladder.7.chrono.r2:.3f}}) agree. Our first rule was "the highest validation R²". On the first ladder it picked a much larger level for a difference far inside the noise, so we switched to the plateau rule we had already fixed for the degree in Phase 2. That change and level C6 are both in the git history.
 
 # %% [markdown]
 # ## Outcome — Phase 3
 #
-# **Diagnosis: the Phase 2 model is {{p3.diagnosis.label}} (high bias, no measurable variance).**
-# - Its training and validation R² differ by {{p3.diagnosis.anchor_gap_train_val:.4f}}. A model that scores the same on rows it has and has not seen is not over-fit.
-# - Adding structure raises validation R² from {{p3.estimates.seeded.r2:.4f}} to {{p3.estimates_target.seeded.r2:.4f}}: a gain of {{p3.diagnosis.gain_target_over_anchor:.3f}} with a paired 95% interval of {{p3.diagnosis.gain_ci_lo:.3f}}–{{p3.diagnosis.gain_ci_hi:.3f}}, confirmed on held-out days (+{{p3.diagnosis.day_block_gain:.3f}}) and on the chronological split (+{{p3.diagnosis.chrono_gain:.3f}}). Something real was missing.
-# - The Phase 2 learning curve is nearly flat: with 10% of the training days validation R² is already {{p3.learning_curves.anchor.0.val_r2:.3f}}, with all of them {{p3.learning_curves.anchor.5.val_r2:.3f}}. More data does little for a model that is too simple.
-# - Variance does exist, but only at the top of the ladder: from level {{p3.diagnosis.overfit_from_level}} on, training R² keeps rising ({{p3.ladder.10.seeded.train_r2:.4f}} at C10) while validation falls ({{p3.ladder.10.seeded.r2:.4f}}); the chronological score starts falling much earlier, right after the target ({{p3.ladder.6.chrono.r2:.3f}} at C6, {{p3.ladder.8.chrono.r2:.3f}} at C8, {{p3.ladder.10.chrono.r2:.3f}} at C10).
-# - The target itself shows a small gap (training {{p3.estimates_target.seeded.train_r2:.4f}}, validation {{p3.estimates_target.seeded.r2:.4f}}) and its learning curve is still rising at full size ({{p3.learning_curves.target.4.val_r2:.3f}} with 80% of the days, {{p3.learning_curves.target.5.val_r2:.3f}} with all). That is where a little variance begins, and it is what Phase 4 has to watch.
+# **Diagnosis: the Phase 2 model is {{p3.diagnosis.label}}, with high bias and no measurable variance.**
+# - Its training and validation R² differ by {{p3.diagnosis.anchor_gap_train_val:.4f}}.
+# - More structure raises validation R² from {{p3.estimates.seeded.r2:.4f}} to {{p3.estimates_target.seeded.r2:.4f}} (gain {{p3.diagnosis.gain_target_over_anchor:.3f}}, paired 95% interval {{p3.diagnosis.gain_ci_lo:.3f}}–{{p3.diagnosis.gain_ci_hi:.3f}}), confirmed on held-out days (+{{p3.diagnosis.day_block_gain:.3f}}) and chronologically (+{{p3.diagnosis.chrono_gain:.3f}}).
+# - The Phase 2 learning curve is flat: {{p3.learning_curves.anchor.0.val_r2:.3f}} with the smallest share of training days, {{p3.learning_curves.anchor.5.val_r2:.3f}} with all of them.
+# - Variance appears only at the top. From level {{p3.diagnosis.overfit_from_level}} on, training R² keeps rising ({{p3.ladder.10.seeded.train_r2:.4f}} at C10) while validation falls ({{p3.ladder.10.seeded.r2:.4f}}). The chronological score falls right after the target ({{p3.ladder.6.chrono.r2:.3f}} at C6, {{p3.ladder.8.chrono.r2:.3f}} at C8, {{p3.ladder.10.chrono.r2:.3f}} at C10), so it is the split that tells us to stop there.
+# - The target shows a small gap (training {{p3.estimates_target.seeded.train_r2:.4f}}, validation {{p3.estimates_target.seeded.r2:.4f}}) and its learning curve still rises at full size ({{p3.learning_curves.target.4.val_r2:.3f}} → {{p3.learning_curves.target.5.val_r2:.3f}}). That is the first sign of variance, for Phase 4 to watch.
 #
-# **The time question.** Seeded {{p3.estimates.seeded.r2:.3f}}, held-out days {{p3.estimates.day_holdout.r2:.3f}}, chronological {{p3.estimates.chrono.r2:.3f}} for Phase 2; {{p3.estimates_target.seeded.r2:.3f}} / {{p3.estimates_target.day_holdout.r2:.3f}} / {{p3.estimates_target.chrono.r2:.3f}} for the target. Sharing days between training and validation is worth nothing to these models; what gap there is comes from drift, the later months having a higher level of demand than the trend predicts. We trust the chronological number for future periods. It does not change the diagnosis, the simpler models are worse on every split, but it does change how far we go: it is the split that punishes the levels above the target most clearly, so it supports stopping there.
+# **The time question.** Seeded, held-out days and chronological: {{p3.estimates.seeded.r2:.3f}}, {{p3.estimates.day_holdout.r2:.3f}} and {{p3.estimates.chrono.r2:.3f}} for Phase 2; {{p3.estimates_target.seeded.r2:.3f}}, {{p3.estimates_target.day_holdout.r2:.3f}} and {{p3.estimates_target.chrono.r2:.3f}} for the target. The diagnosis is the same on every split.
 #
 # **What surprised us.**
-# - *First pass:* we expected sharing days between training and validation to matter at least a little. It does not. The warning in the task statement is right in general, but a linear model with a few hundred weights has no way to recognise an individual day. (A tree model we tried outside the pipeline does: it scores 0.966 on the seeded split and 0.950 on held-out days. The leakage is real; our model class is simply too stiff to use it.)
-# - *First pass:* the degree axis moved validation R² by only {{p3.diagnosis.degree_axis_range:.4f}} between degree 2 and 8. Had we varied only the degree we would have concluded "reasonably fit" and missed {{p3.diagnosis.gain_target_over_anchor:.3f}} of R². Our own first selection rule failed on a near-tie, and our first ladder stopped one useful level short.
-# - *Second pass, expectation met:* the diagnosis and the target level are unchanged, and the exponent check confirms 0.1.
-# - *Second pass, better than expected:* we predicted the chronological estimate of the target would rise from {{first_pass.p3.target.chrono:.3f}} to about 0.93–0.94. It is {{p3.estimates_target.chrono.r2:.3f}}, and the gap between held-out days and the chronological split shrank from {{first_pass.p3.drift_gap_target:.3f}} to {{p3.gaps.target.drift:.3f}}. With the log, the model over-shot the later months by a factor {{first_pass.p3.chrono_mean_ratio_target:.2f}}; now by {{p3.chrono_detail.target.mean_ratio:.2f}}. Most of what we had called "drift" in the first pass was our own choice of target: a straight line on the log scale is exponential growth.
-# - *Second pass:* the gain on held-out days is the modest one we expected ({{first_pass.p3.target.day_holdout:.4f}} → {{p3.estimates_target.day_holdout.r2:.4f}}).
+# - *First pass:* sharing days does not help our model. The warning in the brief is still real: a tree model we tried in `exp/v2/` scores {{diagnostics.tree_model.seeded:.3f}} on the seeded split and {{diagnostics.tree_model.held_out_days:.3f}} on held-out days. A linear model is too stiff to recognise an individual day.
+# - *First pass:* from degree 2 to 8 the degree axis moved validation R² by only {{p3.diagnosis.degree_axis_range:.4f}}. Varying the degree alone would have missed {{p3.diagnosis.gain_target_over_anchor:.3f}} of R².
+# - *Second pass, better than expected:* the chronological estimate of the target rose from {{first_pass.p3.target.chrono:.3f}} to {{p3.estimates_target.chrono.r2:.3f}}, and the drift gap shrank from {{first_pass.p3.drift_gap_target:.3f}} to {{p3.gaps.target.drift:.3f}}. The log over-shot the later months by a factor {{first_pass.p3.chrono_mean_ratio_target:.2f}}, our target by {{p3.chrono_detail.target.mean_ratio:.2f}}. Most of what we had called drift was our choice of target: a straight line on the log scale is exponential growth. The diagnosis, the target level and the exponent did not change.
 #
-# **How much is left.** Averaging `cnt` over cells of year, month, day type, hour and weather situation explains {{p3.noise_floor.noise_floor_r2_adjusted:.3f}} of the training variance after adjusting for the number of cells; our target is above that benchmark on unseen rows. The diagnostic tree model mentioned above (`exp/v2/`, never used for any prediction we submit) scored about 0.950 on held-out days and about 0.90 chronologically, so the target ({{p3.estimates_target.day_holdout.r2:.3f}} and {{p3.estimates_target.chrono.r2:.3f}}) is within about 0.004 of a far more flexible model on unseen days and clearly ahead of it on unseen months. In a second exploration round we tried twenty more groups of input-only features on top of the target (daylight by hour, earlier temperature and humidity, rain in the last six hours, more hour × weather products, and others). None improved held-out days by more than 0.001, and the only ones that did anything, separate levels for each calendar month of each year, gained 0.003 on held-out days and lost 0.05 chronologically. We stop adding structure here.
+# **How much is left.** Cell means over year, month, day type, hour and weather explain {{p3.noise_floor.noise_floor_r2_adjusted:.3f}} of the training variance after adjusting for the number of cells, and our target scores above that on unseen rows. The tree model reaches {{diagnostics.tree_model.held_out_days:.3f}} on held-out days and {{diagnostics.tree_model.chrono:.3f}} chronologically, against {{p3.estimates_target.day_holdout.r2:.3f}} and {{p3.estimates_target.chrono.r2:.3f}} for our target. We also tried {{diagnostics.feature_blocks_tested}} more groups of input-only features; no weather or hour group moved held-out days by more than {{diagnostics.weather_blocks_max_abs_days_delta:.4f}}, and separate levels per calendar month gained {{diagnostics.year_month_levels.held_out_days_delta:.3f}} on held-out days but changed the chronological score by {{diagnostics.year_month_levels.chrono_delta:.3f}}. We stop adding structure here.
 #
-# **Handed to Phase 4:** diagnosis "{{p3.diagnosis.label}}", target complexity {{p3.target_complexity.level}} with {{p3.target_complexity.n_features}} weights (degree {{p3.target_complexity.degree}}). The model we carry forward is not over-fit, but it is the first one with a visible train–validation gap, so we expect regularization to act as insurance with at most a small gain; Phase 4 tests that, including on the over-fit top level.
+# **Handed to Phase 4:** the diagnosis "{{p3.diagnosis.label}}" and target level {{p3.target_complexity.level}} with {{p3.target_complexity.n_features}} weights.

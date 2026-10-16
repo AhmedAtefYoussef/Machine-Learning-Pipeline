@@ -174,3 +174,21 @@ def test_lift_preserves_loss_on_real_design(train_df):
     lifted = poly.lift_weights(w, base.names, big.names)
     assert abs(gd.mse_loss(Xg, z, lifted) - gd.mse_loss(Xb, z, w)) < 1e-12
     assert np.count_nonzero(lifted[len(w):]) == 0
+
+
+def test_fused_loss_and_grad_is_bit_identical():
+    X, y, _ = make_problem(60, 6, seed=3)
+    lam = gd.lambda_max(X)
+
+    def loss(w):
+        return gd.mse_loss(X, y, w)
+
+    def grad(w):
+        return gd.mse_grad(X, y, w)
+
+    def fused(w):
+        return gd.mse_loss_and_grad(X, y, w)
+
+    a = gd.gradient_descent(loss, grad, np.zeros(6), lr=0.5 / lam, max_iter=300)
+    b = gd.gradient_descent(None, None, np.zeros(6), lr=0.5 / lam, max_iter=300, loss_and_grad=fused)
+    assert a.weights.tobytes() == b.weights.tobytes() and a.loss_history == b.loss_history

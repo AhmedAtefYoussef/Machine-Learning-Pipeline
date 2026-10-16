@@ -1,9 +1,11 @@
 """Make-substitute for the Rush Hour pipeline (stdlib only): `python run.py <target>`.
 
-Targets: kit-check | verify-fast | verify | all | p1..p5 | nb | report | fingerprint | submission | clean
+Targets: kit-check | verify-fast | verify | all | p1..p5 | nb | report | fingerprint | submission | manifest | clean
 Same semantics as the Makefile, but it runs on Windows (no make) and uses `python -X utf8` with the environment
-from ARCHITECTURE section 0. A phase rebuilds when its artifact is missing or older than an input.
+from ARCHITECTURE section 0. A phase rebuilds when its artifact is missing, was built from another config or
+upstream artifact, or when the content hash of a file it imports differs from artifacts/build_manifest.json.
 """
+import ast
 import glob
 import hashlib
 import json
@@ -16,15 +18,18 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PY = [sys.executable, "-X", "utf8"]
 ART = "artifacts"
 
-# phase -> (upstream artifact, files named in the Makefile dependency list)
-PHASE_DEPS = {
-    1: (None, ["src/gd.py", "src/phases/p1.py"]),
-    2: ("p1", ["src/poly.py", "src/phases/p2.py"]),
-    3: ("p2", ["src/validation.py", "src/phases/p3.py"]),
-    4: ("p3", ["src/regularization.py", "src/phases/p4.py"]),
-    5: ("p4", ["src/logistic.py", "src/phases/p5.py"]),
+# stage -> (entry module, upstream artifact, extra input files). A stage's source dependencies are the transitive
+# closure of the `src.*` imports of its entry module (see source_deps), so no hand-kept list can go out of date.
+STAGES = {
+    "p1": ("src/phases/p1.py", None, ["data/train.csv"]),
+    "p2": ("src/phases/p2.py", "p1", []),
+    "p3": ("src/phases/p3.py", "p2", []),
+    "p4": ("src/phases/p4.py", "p3", []),
+    "p5": ("src/phases/p5.py", "p4", []),
+    "p6": ("src/predict.py", "p5", []),
+    "bonus_control": ("src/bonus_control.py", "p1", []),
 }
-EVERY_PHASE = ["config.yaml", "src/features.py", "src/common.py"]
+MANIFEST = f"{ART}/build_manifest.json"
 
 LEAK_ARGS = ["src", "nb",
              "--scratch-glob", "*p1_*.py", "--scratch-glob", "*p2_*.py",
@@ -57,45 +62,111 @@ def tool(name: str, *args: str, tail: int = 15) -> int:
     return run(PY + [f"tools/{name}.py", *args], tail)
 
 
-def mtime(path: str) -> float:
-    return os.path.getmtime(os.path.join(ROOT, path))
-
-
 def sha256_file(path: str) -> str:
     with open(os.path.join(ROOT, path), "rb") as handle:
         return hashlib.sha256(handle.read()).hexdigest()
 
 
-def stale(n: int) -> bool:
-    """True when artifacts/pN.json is missing, was built from another config.yaml or another upstream artifact
-    (compared by content hash, not by file time: re-running an upstream phase to the same bytes changes nothing),
-    or is older than a source file it depends on."""
-    target = f"{ART}/p{n}.json"
+def content_hash(path: str) -> str:
+    """sha256 of a file with CRLF folded to LF, so a Windows and a Linux checkout of one commit agree."""
+    with open(os.path.join(ROOT, path), "rb") as handle:
+        return hashlib.sha256(handle.read().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def imported_files(path: str) -> set:
+    """Repo files (src/...) named by the `import src.x` / `from src.x import y` statements of one module."""
+    with open(os.path.join(ROOT, path), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    names = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names += [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]  # y may be a module
+    files = {name.replace(".", "/") + ".py" for name in names if name.startswith("src.")}
+    return {f for f in files if os.path.exists(os.path.join(ROOT, f))}
+
+
+def source_deps(entry: str) -> list:
+    """The entry module plus every src/ file it imports, directly or through other src/ modules (sorted)."""
+    seen, todo = set(), [entry]
+    while todo:
+        path = todo.pop()
+        if path not in seen:
+            seen.add(path)
+            todo += sorted(imported_files(path))
+    return sorted(seen)
+
+
+def stage_inputs(name: str) -> list:
+    entry, _, extra = STAGES[name]
+    return source_deps(entry) + extra
+
+
+def input_hashes(name: str) -> dict:
+    return {path: content_hash(path) for path in stage_inputs(name)}
+
+
+def read_manifest() -> dict:
+    path = os.path.join(ROOT, MANIFEST)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def record(names: list) -> int:
+    """Store the current input hashes of the given stages in the manifest."""
+    manifest = read_manifest()
+    manifest.update({name: input_hashes(name) for name in names})
+    with open(os.path.join(ROOT, MANIFEST), "w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=1, sort_keys=True)
+        handle.write("\n")
+    return 0
+
+
+def stale(name: str) -> bool:
+    """True when the artifact is missing, was built from another config.yaml or another upstream artifact
+    (artifact hashes, so re-running an upstream phase to the same bytes changes nothing), or when the manifest has
+    no entry for it or any input file has another content hash than at the last successful build."""
+    target = f"{ART}/{name}.json"
     if not os.path.exists(os.path.join(ROOT, target)):
         return True
     with open(os.path.join(ROOT, target), encoding="utf-8") as handle:
         artifact = json.load(handle)
     if artifact.get("config_sha256") != sha256_file("config.yaml"):
         return True
-    upstream, own = PHASE_DEPS[n]
+    upstream = STAGES[name][1]
     if upstream and artifact.get("upstream_sha256") != sha256_file(f"{ART}/{upstream}.json"):
         return True
-    sources = [p for p in EVERY_PHASE + own if p.endswith(".py")]
-    return any(os.path.exists(os.path.join(ROOT, p)) and mtime(p) > mtime(target) for p in sources)
+    return read_manifest().get(name) != input_hashes(name)
+
+
+def build_stage(name: str, module: str) -> int:
+    """Run `python -m module` when the stage is stale; record its input hashes after a clean exit."""
+    if not stale(name):
+        print(f"[run] {name} up to date")
+        return 0
+    print(f"[run] building {name}")
+    code = run(PY + ["-m", module], tail=30)
+    if code != 0:
+        print(f"[run] {name} failed (exit {code})")
+        return code
+    return record([name])
 
 
 def build_phase(n: int) -> int:
     """Build phases 1..n in order, rebuilding only stale ones (a rebuild makes everything downstream stale)."""
     for k in range(1, n + 1):
-        if stale(k):
-            print(f"[run] building p{k}")
-            code = run(PY + ["-m", f"src.phases.p{k}"], tail=30)
-            if code != 0:
-                print(f"[run] p{k} failed (exit {code})")
-                return code
-        else:
-            print(f"[run] p{k} up to date")
+        code = build_stage(f"p{k}", f"src.phases.p{k}")
+        if code != 0:
+            return code
     return 0
+
+
+def submission() -> int:
+    """Build p1..p5 if stale, then the p6 prediction (sample_submission.csv) if stale."""
+    return build_phase(5) or build_stage("p6", "src.predict")
 
 
 def existing_artifacts() -> str:
@@ -120,7 +191,7 @@ def p6_chain() -> bool:
 
 def verify_fast() -> int:
     """ruff (non-fatal), pytest, leak_scan, chain_check, req_check; fails if pytest, leak_scan or chain_check fail."""
-    run(PY + ["-m", "ruff", "check", "src", "tools", "tests"])
+    run(PY + ["-m", "ruff", "check", "run.py", "src", "tools", "tests"])
     failed = []
     code = run(PY + ["-m", "pytest", "-q", "-x", "tests"])
     if code not in (0, 5):  # 5 = no tests collected yet
@@ -135,6 +206,8 @@ def verify_fast() -> int:
         print("chain_check: no artifacts yet")
     if not p6_chain():
         failed.append("p6 chain")
+    if tool("expectation_check") != 0:
+        failed.append("expectation_check")
     tool("req_check", tail=10)
     if failed:
         print("verify-fast FAILED:", ", ".join(failed))
@@ -154,6 +227,9 @@ def render_notebook_sources() -> int:
 
 
 def nb() -> int:
+    """Bring p1..p5 and the bonus control up to date first, so the rendered placeholders match the artifacts."""
+    if build_phase(5) != 0 or build_stage("bonus_control", "src.bonus_control") != 0:
+        return 1
     if render_notebook_sources() != 0:
         return 1
     if tool("embed_bundle", "build/nb/p0_setup.py") != 0:   # project files travel inside the notebook (Colab)
@@ -166,6 +242,8 @@ def report() -> int:
     code = tool("number_trace", "render", "report/report.template.md", "report/report.md", tail=5)
     if code == 0 and os.path.exists(os.path.join(ROOT, "report", "build_pdf.py")):
         code = run(PY + ["report/build_pdf.py"], tail=5)
+    if code == 0:  # the submitted copy at the repo root must match the fresh build
+        shutil.copyfile(os.path.join(ROOT, "report", "report.pdf"), os.path.join(ROOT, "report.pdf"))
     return code
 
 
@@ -229,7 +307,8 @@ def main(argv: list) -> int:
         "nb": nb,
         "report": report,
         "fingerprint": lambda: tool("fingerprint", ART),
-        "submission": lambda: run(PY + ["-m", "src.predict"]),
+        "submission": submission,
+        "manifest": lambda: record(list(STAGES)),
         "clean": clean,
     }
     if target not in simple:

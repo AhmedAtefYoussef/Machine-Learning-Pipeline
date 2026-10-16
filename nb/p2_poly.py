@@ -27,56 +27,40 @@
 
 # %% [markdown]
 # ### Justification: initialisation from Phase 1
-# The expanded design keeps the 35 Phase 1 columns in the same positions and with the Phase 1 scaler (read from `artifacts/p1.json`, not refitted). Each new column gets its own training mean and standard deviation. The longer weight vector is the Phase 1 vector with zeros in the new positions. A zero weight switches a column off, so the expanded model starts as exactly the Phase 1 model: its first loss must equal Phase 1's last loss. The cell below checks this to 1e-9. Starting there instead of at random also means gradient descent only has to learn the correction that the new columns allow.
+#
+# The Phase 1 columns keep their positions and the Phase 1 scaler, read from `artifacts/p1.json`; each new column is standardised on the training rows. The weight vector is the Phase 1 vector with zeros for the new columns, so the expanded model starts as exactly the Phase 1 model, and its first loss must equal Phase 1's last loss (asserted below). Gradient descent then only has to learn the correction that the new columns allow.
 
 # %%
 # Phase 2 starts from the Phase 1 weights, so its first loss must equal Phase 1's last loss (the hand-over).
 import src.phases.p2 as p2mod
 from src.poly import lift_weights
 
-p2 = phase("p2", p2mod.run, CFG, upstream="p1", live=True, recompute_all=RECOMPUTE_ALL)   # reads artifacts/p1.json, fits Phase 2 here and now
+p2 = phase("p2", p2mod.run, CFG, RECOMPUTE_ALL, upstream="p1", live=True)
 assert abs(p2["init_loss"] - p1["train_loss_final"]) <= 1e-9, "the hand-over from Phase 1 to Phase 2 is broken"
-view.p2_handover(p1, p2)
-
-# %%
-# How the Phase 1 weights are placed into the longer Phase 2 vector.
+print(f"first Phase 2 loss {p2['init_loss']:.9f} = last Phase 1 loss {p1['train_loss_final']:.9f}; "
+      f"{len(p2['feature_names'])} weights, {p2['iterations']} iterations")
 show_source(lift_weights)
 
 # %% [markdown]
-# ### Justification: what we expanded
-# We expand only where Phase 1's residuals showed structure.
-# - **`workingday × hour` (23 degree-2 products).** The Phase 1 residuals differ by day type at almost every hour. Without this block the expanded model reaches only {{p2.block_ablation.without_wd_x_hr.val_r2:.4f}} on validation; with it {{p2.val_r2:.4f}} (ablation below). This is the one expansion that matters.
-# - **Powers of `temp`.** Demand rises with temperature and flattens when it is hot. At the chosen degree, powers of `temp` alone give {{p2.power_col_sweep.0.val_r2:.4f}}, adding `hum` gives {{p2.power_col_sweep.1.val_r2:.4f}} and adding `windspeed` as well gives {{p2.power_col_sweep.2.val_r2:.4f}}. Differences below {{p2.plateau_tol}} are far inside the noise of our validation set (standard error {{p2.val_bootstrap.se:.4f}}), so by our rule we keep the smallest set: `temp` only.
-# - **Not expanded.** Hour dummies, weather dummies and `holiday` are 0/1, so their powers are themselves. `trend` is not raised to a power, because a polynomial in time bends away sharply outside the observed dates. The day-of-year terms are already non-linear.
-
-# %%
-# The expanded design: which blocks and power columns, how many new columns, and how hard it is to optimise.
-view.p2_design(p2)
+# ### Justification: what we expanded, and the degree
+#
+# - **`workingday × hour`.** Phase 1's residuals differ by day type at almost every hour. Without these products the model reaches {{p2.block_ablation.without_wd_x_hr.val_r2:.4f}} on validation, with them {{p2.val_r2:.4f}} (table below).
+# - **Powers of `temp` only.** At the chosen degree, powers of `temp` give {{p2.power_col_sweep.0.val_r2:.4f}}, adding `hum` gives {{p2.power_col_sweep.1.val_r2:.4f}} and adding `windspeed` too gives {{p2.power_col_sweep.2.val_r2:.4f}}. These differences are below our tolerance of {{p2.plateau_tol}} and inside the noise (validation standard error {{p2.val_bootstrap.se:.4f}}), so we keep the smallest set.
+# - **Not expanded.** A 0/1 column equals its own powers, a power of the trend would bend away outside the observed dates, and the day-of-year terms are already curved.
 
 # %% [markdown]
 # ### Justification: degree
-# "Degree" is the highest total degree of any term: the interaction products are degree 2 and the powers go up to the chosen degree. With every candidate fitted by our own gradient descent from the Phase 1 weights, validation R² is {{p2.degree_sweep.0.val_r2:.4f}} at degree 1 (interactions only), {{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3 and {{p2.degree_sweep.3.val_r2:.4f}} at degree 4. Our rule, fixed before the run, is the smallest degree within {{p2.plateau_tol}} of the best: degree {{p2.degree}}. The square captures "warmer is better", the cube captures the flattening at high temperature; a fourth power adds nothing. The learning rate is again half the stability bound, recomputed for this design (λ_max {{p2.lambda_max:.3f}}, lr {{p2.lr:.4f}}), with the same stopping rule as Phase 1.
+#
+# The degree is the highest total degree of any term: the products are degree 2 and the powers go up to the chosen degree. Validation R² is {{p2.degree_sweep.0.val_r2:.4f}} at degree 1 (products only), {{p2.degree_sweep.1.val_r2:.4f}} at 2, {{p2.degree_sweep.2.val_r2:.4f}} at 3 and {{p2.degree_sweep.3.val_r2:.4f}} at 4. Our rule, fixed before the run, takes the smallest degree within {{p2.plateau_tol}} of the best: degree {{p2.degree}}. The learning rate is again half the stability bound of this design (lr {{p2.lr:.4f}}), with the Phase 1 stopping rule.
 
 # %%
-# Validation R² for each candidate degree (the highlighted row is our choice).
-view.p2_degree_sweep(p2)
-
-# %%
-# The same sweep as a plot.
-show(plots.plot_degree_sweep(p2))
-
-# %%
-# Which variables get powers: temperature alone, or humidity and wind as well.
-view.p2_power_cols(p2)
-
-# %%
-# What the working-day x hour block adds.
-view.p2_ablation(p2)
-
-# %%
-# Phase 2 against Phase 1 on the validation rows, and how the run ended.
-display(view.p2_scores(p1, p2))
-display(view.p2_fit(p2))
+# Validation R² for each degree, for each set of power columns, and without the workingday x hour block.
+runs = [(f"degree {r['degree']}", r) for r in p2["degree_sweep"]]
+runs += [("powers of " + ", ".join(r["power_cols"]), r) for r in p2["power_col_sweep"]]
+runs += [("without the workingday x hour block", p2["block_ablation"]["without_wd_x_hr"])]
+sweep = pd.DataFrame([{"setting": name, "weights": r["n_features"], "train_r2": r["train_r2"], "val_r2": r["val_r2"]} for name, r in runs])
+chosen = [f"degree {p2['degree']}", "powers of " + ", ".join(p2["power_cols"])]
+table(sweep, "What we varied in Phase 2 (highlighted: the choices we kept)", sweep["setting"].isin(chosen))
 
 # %%
 # The residuals by hour and day type before (Phase 1) and after (Phase 2) the expansion.
@@ -86,16 +70,14 @@ show(plots.plot_residual_profile(p1, p2))
 # ## Outcome — Phase 2
 #
 # **What happened.**
-# - The hand-over held exactly: the first Phase 2 loss equals the last Phase 1 loss ({{p2.init_loss:.6f}}).
-# - Chosen model: degree {{p2.degree}}, powers of `temp`, plus `workingday × hour`: {{p2.power_col_sweep.0.n_features}} weights. Validation R² rose from {{p2.p1_val_r2:.4f}} to {{p2.val_r2:.4f}} (gain {{p2.paired_vs_p1.delta:.3f}}, paired 95% interval {{p2.paired_vs_p1.lo:.3f}}–{{p2.paired_vs_p1.hi:.3f}}); RMSE is {{p2.val_rmse:.1f}} bikes. Training R² is {{p2.train_r2:.4f}}: still no gap.
-# - As expected, almost all of the gain is the interaction block (degree 1 with interactions already gives {{p2.degree_sweep.0.val_r2:.4f}}); the temperature powers add about 0.02, and the curve is flat after degree 3.
-# - The residual profile by hour and day type is now flat.
+# - The hand-over held: the first Phase 2 loss equals the last Phase 1 loss ({{p2.init_loss:.6f}}).
+# - The chosen model has degree {{p2.degree}}, powers of `temp` and the `workingday × hour` block: {{p2.power_col_sweep.0.n_features}} weights. Validation R² rose from {{p2.p1_val_r2:.4f}} to {{p2.val_r2:.4f}} (gain {{p2.paired_vs_p1.delta:.3f}}, paired 95% interval {{p2.paired_vs_p1.lo:.3f}}–{{p2.paired_vs_p1.hi:.3f}}) and RMSE is {{p2.val_rmse:.1f}} bikes. Training R² is {{p2.train_r2:.4f}}, so there is still no gap.
+# - Almost all of the gain is the interaction block, and the residual profile by hour and day type is now flat. With the log target the same choices scored {{first_pass.p2.val_r2:.4f}}.
 #
 # **What surprised us.**
-# - Optimisation was much easier than we feared: {{p2.iterations}} iterations, not thousands. We had expected the new columns to be strongly correlated with the old ones, but because we build powers and products from standardised columns the condition number only rose to {{p2.condition_number:.0f}}.
-# - Humidity powers were not worth keeping ({{p2.power_col_sweep.0.val_r2:.4f}} → {{p2.power_col_sweep.1.val_r2:.4f}}); we had expected humidity to need a curve as much as temperature does.
-# - Training and validation R² are almost identical. A model that fits unseen rows as well as its own training rows is not over-fit; the open question for Phase 3 is whether it is still too simple.
+# - Optimisation was easy: {{p2.iterations}} iterations, not thousands. Powers and products of standardised columns kept the condition number at {{p2.condition_number:.0f}}.
+# - Humidity did not need a curve, although we expected it to.
+# - In the second pass the cube of temperature earns its place more clearly than before ({{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3).
+# - Training and validation scores are almost equal, so the model is not over-fit. Whether it is too simple is the question for Phase 3.
 #
-# **Second pass.** With the power target the choices are the ones we expected: the same block, the same degree, powers of `temp` only, and validation R² {{p2.val_r2:.4f}} against {{first_pass.p2.val_r2:.4f}} with the log target. One detail differs from the first pass: the degree curve is not quite as flat before degree 3 ({{p2.degree_sweep.1.val_r2:.4f}} at degree 2, {{p2.degree_sweep.2.val_r2:.4f}} at degree 3), so the cube of temperature earns its place more clearly now.
-#
-# **Handed to Phase 3:** degree {{p2.degree}} and the expanded feature list in `artifacts/p2.json`.
+# **Handed to Phase 3:** the degree and the expanded feature list, in `artifacts/p2.json`.

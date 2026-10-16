@@ -8,7 +8,11 @@ check:  every decimal / percentage number in a text file must match some numeric
    number_trace.py check report/report.md [--dir artifacts] [--whitelist report/number_whitelist.txt]
 Integers < 100 and years 2011/2012 are ignored (page counts, phase numbers, degrees are covered by placeholders when they matter).
 """
-import argparse, json, pathlib, re, sys
+import argparse
+import json
+import pathlib
+import re
+import sys
 
 
 def load(d):
@@ -62,7 +66,7 @@ def check(src, d, wl):
     flat_numbers(arts, vals)
     white = set()
     if pathlib.Path(wl).exists():
-        white = {l.strip() for l in pathlib.Path(wl).read_text().splitlines() if l.strip() and not l.startswith("#")}
+        white = {ln.strip() for ln in pathlib.Path(wl).read_text().splitlines() if ln.strip() and not ln.startswith("#")}
     text = pathlib.Path(src).read_text()
     bad = []
     for m in re.finditer(r"(?<![\w.])(-?\d+\.\d+|\d+(?:\.\d+)?%)", text):
@@ -81,7 +85,16 @@ def check(src, d, wl):
 
 ap = argparse.ArgumentParser()
 sp = ap.add_subparsers(dest="cmd", required=True)
-r = sp.add_parser("render"); r.add_argument("src"); r.add_argument("dst"); r.add_argument("--dir", default="artifacts")
-c = sp.add_parser("check"); c.add_argument("src"); c.add_argument("--dir", default="artifacts"); c.add_argument("--whitelist", default="report/number_whitelist.txt")
+r = sp.add_parser("render")
+r.add_argument("src")
+r.add_argument("dst")
+r.add_argument("--dir", default="artifacts")
+c = sp.add_parser("check")
+c.add_argument("src")
+c.add_argument("--dir", default="artifacts")
+c.add_argument("--whitelist", default="report/number_whitelist.txt")
 a = ap.parse_args()
-render(a.src, a.dst, a.dir) if a.cmd == "render" else check(a.src, a.dir, a.whitelist)
+if a.cmd == "render":
+    render(a.src, a.dst, a.dir)
+else:
+    check(a.src, a.dir, a.whitelist)

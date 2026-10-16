@@ -15,10 +15,10 @@ import numpy as np
 from src.common import (Target, bootstrap_r2, load_config, paired_bootstrap_delta_r2, read_artifact,
                         set_threads, write_artifact)
 from src.features import BASE, Design, DesignSpec
-from src.gd import lambda_max, mse_loss
-from src.phases.p1 import (Split, bike_predictions, curve_points, make_split, model_scores, oracle_gap,
-                           residual_profile, run_gd)
+from src.gd import lambda_max, mse_loss, run_gd
 from src.poly import lift_weights
+from src.validation import (Split, bike_predictions, curve_points, make_split, model_scores, oracle_gap,
+                            residual_profile)
 
 CHAIN_TOL = 1e-9          # P2 initial loss must equal P1 final loss to this tolerance (ARCHITECTURE section 1)
 MAIN_CURVE_POINTS = 300   # points kept of the final loss curve
@@ -79,8 +79,9 @@ def power_col_sweep(split, p1, cfg, blocks, degree) -> list:
     return [fit_expanded(_spec(degree, cols, blocks), split, p1, cfg) for cols in cfg["p2"]["power_col_candidates"]]
 
 
-def run(cfg: dict | None = None) -> dict:
-    """Run Phase 2, write artifacts/p2.json and return the artifact as read back from disk."""
+def run(cfg: dict | None = None, write: bool = True) -> dict:
+    """Run Phase 2. With write=True store artifacts/p2.json and return it as read back from disk; with
+    write=False touch no file and return the payload (the notebook's live mode)."""
     cfg = cfg if cfg is not None else load_config()
     set_threads(cfg["threads"])
     p2 = cfg["p2"]
@@ -137,6 +138,8 @@ def run(cfg: dict | None = None) -> dict:
         "residual_profile": residual_profile(split.train_df, split.z_tr - X_tr @ w),
         "backtransform": {"method": target.back_method, "factor": scores["factor"]},
     }
+    if not write:
+        return payload
     write_artifact("p2", payload, upstream="p1", cfg=cfg)
     return read_artifact("p2")
 
