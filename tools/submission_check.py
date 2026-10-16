@@ -5,8 +5,10 @@ Soft (WARN): per-(workingday,hour) mean prediction outside [0.4x, 2.5x] of the t
              total predicted demand per test day outside [0.4x, 2.5x] of the mean daily total of train days in the same month.
 Usage: submission_check.py --sub sample_submission.csv --test data/test.csv --train data/train.csv
 """
-import argparse, sys
-import numpy as np, pandas as pd
+import argparse
+import sys
+import numpy as np
+import pandas as pd
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--sub", default="sample_submission.csv")

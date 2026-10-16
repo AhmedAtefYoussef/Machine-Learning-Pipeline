@@ -9,7 +9,12 @@ Suppress a line with the comment  `# leak-ok: <reason>`  (use for oracle tests o
 
 Usage: leak_scan.py [paths...] [--scratch-glob 'nb/p1*.py' --scratch-glob 'nb/p2*.py' --scratch-glob 'src/gd*.py'] [--test-ok src/predict.py nb/p6*.py]
 """
-import argparse, ast, fnmatch, pathlib, re, sys
+import argparse
+import ast
+import fnmatch
+import pathlib
+import re
+import sys
 
 SUSP = re.compile(r"(^|_)(val|valid|validation|test|te|xte|xval|x_val|x_te|yval|y_val)($|_)|^(xv|xt)$", re.I)
 FIT_FUNCS = {"fit", "fit_transform", "partial_fit"}
