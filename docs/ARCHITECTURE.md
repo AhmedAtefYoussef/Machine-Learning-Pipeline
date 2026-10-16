@@ -13,11 +13,26 @@ P1 `artifacts/p1.json` (weights, scaler, lr, iterations) → P2 lifts weights, G
 → P5 logistic on survivors → `p5.json` → `src/predict.py` → `sample_submission.csv` + `artifacts/p6.json`.
 Each phase module: `run(cfg: dict | None = None) -> dict` loads the upstream artifact FROM DISK, computes, writes its artifact via `common.write_artifact`, returns the payload. `python -m src.phases.pN` calls `run()`.
 
+Phase modules import only libraries (`src.common`, `src.features`, `src.gd`, `src.gd_asym`, `src.poly`, `src.regularization`, `src.verdicts`, `src.logistic`, `src.labels`, `src.validation`), never another phase; the upstream phase reaches them only through its artifact on disk. `run(cfg, write=False)` returns the payload without writing (the notebook's live mode).
+
+## 1a Build (`run.py`; the Makefile is kept for reference only)
+`python run.py <target>` (kit-check, verify-fast, verify, all, p1..p5, nb, report, fingerprint, submission, manifest, clean). A stage is stale when the content hash of any input differs from `artifacts/build_manifest.json`; inputs are config.yaml, the upstream artifact and every `src/` file in the stage's import closure (found by parsing imports), so an upstream rebuild to the same bytes triggers nothing. `python run.py manifest` re-records the hashes after a verified rebuild. `nb` builds the phases and `bonus_control.json` first. `tools/expectation_check.py` (in verify-fast) fails when an Expectation cell differs from the text of the first commit that contained it (H9). `run.py fingerprint` prints stable hashes of p1..p6, bonus_control and the submission.
+
 ## 2 Determinism
-float64 everywhere; no RNG except `np.random.default_rng(seed + k)` with a documented k; GD starts from zeros (P1) or lifted P1 weights (P2); JSON written with `sort_keys=True, indent=1`; floats stored at full precision (`repr` round-trip). Same config → byte-identical artifact (no timestamps inside `pN.json`).
+float64 everywhere; no RNG except `np.random.default_rng(seed + k)` with a documented k (table below); GD starts from zeros (P1) or lifted P1 weights (P2); JSON written with `sort_keys=True, indent=1`; floats stored at full precision (`repr` round-trip). Same config → byte-identical artifact (no timestamps inside `pN.json`).
+
+| stream | generator | offset k |
+|---|---|---|
+| seeded 80/20 split (P1-P5 re-create the same one) | sklearn `train_test_split(random_state=seed)` | 0 |
+| P1 gradient check at a random point | `default_rng(seed)` | 0 |
+| row bootstraps of R2 and paired deltas (P1-P4) | `common._bootstrap_indices`: `default_rng(seed)` | 0 |
+| P3 learning-curve day order | `default_rng(seed).permutation(dates)` | 0 |
+| P4 stability selection, resample b | `default_rng(seed + b)`, b = 0..B-1 | b |
+| P5 ROC-AUC bootstrap | `default_rng(seed + 5)` (`p5.BOOTSTRAP_RNG_OFFSET`) | 5 |
+Streams with k = 0 restart from the seed independently, so each result is reproducible on its own; day-block folds use no RNG (date rank mod 5).
 
 ## 3 Target (ADR-017, which supersedes the transform of ADR-001; ADR-002)
-`common.Target(power, back_method)` carries the transform through the chain (stored in p1.json as `target_power` and `backtransform.method`; later phases build it with `Target.from_artifact(p1)`). `z = forward(cnt)` = `log1p(cnt)` for power 0, else `((cnt+1)^power - 1)/power`. Models are linear in z. Bike scale: `q(eta)` = `exp(eta)` or `(power*eta + 1)^(1/power)`, `cnt_hat = clip(s*q(eta) - 1, 0, None)`, with the back-transform factor `s` = 1 (`none`) or the least-squares factor Σ(cnt+1)q / Σq² (`ls`) fitted on the fit rows (`duan` exists for power 0 only). The exponent is set in `config.yaml` (`p1.target_power`, 0.1) and fixed for the whole chain; Phase 1 shows a table over candidate exponents and Phase 3 re-checks the exponent on the target design. All R²/RMSE are on the bike scale. Evaluation fits cap eta at `target.eta_cap(cnt_fit)` (q ≤ e × the largest training count + 1).
+`common.Target(power, back_method)` carries the transform through the chain (stored in p1.json as `target_power` and `backtransform.method`; later phases build it with `Target.from_artifact(p1)`). `z = forward(cnt)` = `log1p(cnt)` for power 0, else `((cnt+1)^power - 1)/power`. Models are linear in z. Bike scale: `q(eta)` = `exp(eta)` or `(power*eta + 1)^(1/power)`, `cnt_hat = clip(s*q(eta) - 1, 0, None)`, with the back-transform factor `s` = 1 (`none`) or the least-squares factor Σ(cnt+1)q / Σq² (`ls`) fitted on the fit rows (`duan` exists for power 0 only). The exponent is set in `config.yaml` (`p1.target_power`, 0.1) and fixed for the whole chain; Phase 1 shows a table over candidate exponents and Phase 3 re-checks the exponent on the target design. All R²/RMSE are on the bike scale. Evaluation fits cap eta at `target.eta_cap(cnt_fit)` (q ≤ e × the largest training count + 1) via `Target.capped`. `Target.predict(eta_fit, cnt_fit, eta_new, ...)` is the one path from linear scores to bikes: cap, factor from the fit rows, back-transform, clip.
 
 ## 4 Features (`src/features.py`)
 `raw_columns(df, hum_fill) -> DataFrame` unscaled named columns (ALL candidates, same index as df):
@@ -40,7 +55,7 @@ Names: powers `temp^2`, products `workingday*hr_7`, `mn_3*workingday*hr_7`. Colu
 - `subset(names) -> column indices` helper for P4 drops / P5 survivors.
 
 ## 5 `src/common.py`
-`load_config(path="config.yaml") -> dict` · `team_seed(ids) -> int` (asserts the 41698 self-test) · `set_threads()` · `load_train(cfg) -> DataFrame` (dteday parsed) · `load_test(cfg)` · `seeded_split(df, seed, test_size=0.20) -> (train_df, val_df)` (single sklearn `train_test_split`, nothing else) · `chrono_split(df, cut_date) -> (early_df, late_df)` · `day_block_folds(df, k=5) -> np.ndarray[int]` fold = rank of the row's date among the sorted unique dates of `df`, mod k (date-determined, no seed) · `to_target(cnt) = log1p` · `back_factor(method, z_train, eta_train, cnt_train) -> float` · `from_target(eta, s) -> cnt_hat` (clip ≥ 0) · `r2(y, yhat)`, `rmse(y, yhat)` · `bootstrap_r2(y, yhat, seed, B=1000) -> (lo, hi, se)` percentile 95% · `paired_bootstrap_delta_r2(y, yhat_a, yhat_b, seed, B=1000) -> (delta, lo, hi)` · `write_artifact(name, payload, upstream=None, cfg=None) -> path` adds `seed`, `config_sha256` (sha256 of config.yaml bytes), `upstream_sha256` (sha256 of `artifacts/<upstream>.json` bytes or null) · `read_artifact(name) -> dict` · `sha256_file(path)`.
+`load_config(path="config.yaml") -> dict` · `team_seed(ids) -> int` (asserts the 41698 self-test) · `set_threads()` · `load_train(cfg) -> DataFrame` (dteday parsed) · `load_test(cfg)` · `seeded_split(df, seed, test_size=0.20) -> (train_df, val_df)` (single sklearn `train_test_split`, nothing else) · `chrono_split(df, cut_date) -> (early_df, late_df)` · `day_block_folds(df, k=5) -> np.ndarray[int]` fold = rank of the row's date among the sorted unique dates of `df`, mod k (date-determined, no seed) · `Target` (section 3; replaces the old `to_target`/`back_factor`/`from_target`) · `timed(step, timings, tag)` · `r2(y, yhat)`, `rmse(y, yhat)` · `bootstrap_r2(y, yhat, seed, B=1000) -> (lo, hi, se)` percentile 95% · `paired_bootstrap_delta_r2(y, yhat_a, yhat_b, seed, B=1000) -> (delta, lo, hi)` · `write_artifact(name, payload, upstream=None, cfg=None) -> path` adds `seed`, `config_sha256` (sha256 of config.yaml bytes), `upstream_sha256` (sha256 of `artifacts/<upstream>.json` bytes or null) · `read_artifact(name) -> dict` · `sha256_file(path)`.
 
 ## 6 `src/gd.py` (own optimiser; numpy only)
 `mse_loss(X, y, w) -> float` = (1/2n)‖Xw − y‖² · `mse_grad(X, y, w)` = (1/n)Xᵀ(Xw − y) · `lambda_max(X) -> float` largest eigenvalue of XᵀX/n (`np.linalg.eigvalsh`)
@@ -56,8 +71,9 @@ Objective (sklearn scaling): (1/2n)‖y − b − Xw‖² + α·ρ‖w‖₁ + (
 
 ## 8 `src/validation.py`
 `fit_linear(X, y_z, alpha=1e-8) -> w` closed-form normal equations with bias unpenalised (P3 sweeps: hundreds of fits; same optimum GD reaches, shown in P1/P2 oracle gap).
-`evaluate_spec(spec, fit_df, eval_df, back_method, alpha=1e-8) -> dict(p, train_r2, train_rmse, r2, rmse, train_r2_log, r2_log)` (Design fitted on fit_df only).
-`three_validators(spec, train_df, val_df, train_all, cut_date, back_method, k=5) -> dict(seeded{…}, day_block{mean r2, sd, folds[], train_r2}, chrono{…})`. day-block = folds INSIDE train_df.
+Shared helpers used by several phases: `Split` and `make_split(cfg, target)` (the seeded split with targets), `config_target`, `base_design`, `bike_predictions`, `model_scores`, `oracle_gap`, `curve_points`, `residual_profile`, `ladder_specs(cfg, anchor_spec)`, `fit_predict`, `day_block_scores`, `chrono_scores`, `nested_day_subsets`.
+`evaluate_spec(spec, fit_df, eval_df, target: Target, alpha=1e-8) -> dict(p, train_r2, train_rmse, r2, rmse, train_r2_log, r2_log)` (Design fitted on fit_df only).
+`three_validators(spec, train_df, val_df, train_all, cut_date, target, k=5) -> dict(seeded{…}, day_block{mean r2, sd, folds[], train_r2}, chrono{…})`. day-block = folds INSIDE train_df.
 `learning_curve(spec, train_df, val_df, fractions, seed, back_method)` nested subsets of a fixed permutation of train DATES.
 `noise_floor(train_df) -> dict` 1 − within-cell SS / total SS of cnt for cells (yr, mnth, workingday, hr, weathersit≤3), plus count of cells and singleton share.
 
@@ -69,4 +85,4 @@ src/common.py, src/features.py, run.py: coder-A · src/gd.py, gd_asym.py, poly.p
 Agents work in the main checkout on disjoint `paths_owned` (no worktrees on this OneDrive path); nobody but the chief runs `git commit`.
 
 ## 11 Design freezes
-F1 (after P1 gate): BASE columns, cleaning (hum fill, weathersit merge), target = log1p, back-transform method, standardisation. F2 (after P3 gate): target complexity, validators, chronological cut.
+F1 (after P1 gate): BASE columns, cleaning (hum fill, weathersit merge), target = power transform with exponent 0.1 (ADR-017, superseding log1p), back-transform method (ls), standardisation. F2 (after P3 gate): target complexity, validators, chronological cut.
